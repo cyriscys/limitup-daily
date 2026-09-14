@@ -1,0 +1,537 @@
+// 交易脉冲 · 涨停板块 / 百日新高（真实数据版）
+// 数据源：东方财富涨停池/炸板池、腾讯日K（后续溢价）、Wind（百日新高）。
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDate = d => `${d.slice(4, 6)}-${d.slice(6, 8)}`;
+const fmtYi = v => (v / 1e8).toFixed(2);
+
+const state = {
+  view: "limit",
+  dataset: null,
+  endDate: null,
+  sort: "count",
+  minFive: false,
+  strict: false,
+  showBreak: false,
+  premiumDays: 5,
+  selected: null,
+  drawerOrigin: null,
+  marketData: null,
+  forwardCache: {},
+  highCache: {},
+  highDate: null,
+  highMode: "sector",
+};
+
+function showToast(message) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = message;
+  document.body.append(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+function heatOf(sector) {
+  const m = sector.maxLbc;
+  return m >= 5 ? 5 : m === 4 ? 4 : m === 3 ? 3 : m === 2 ? 2 : 1;
+}
+function heatClass(n) { return n >= 4 ? "hot" : n === 3 ? "warm" : "cool"; }
+function tagClass(tag) { return tag === "首板" ? "tag-first" : /连板/.test(tag) ? "tag-ladder" : "tag-mixed"; }
+
+// ---------- 数据 ----------
+async function loadDataset(end, { silent } = {}) {
+  const params = end ? `?end=${end}&days=15` : "?days=15";
+  if (!silent) $("#board").innerHTML = `<p class="empty-lane board-loading">正在读取真实涨停池……</p>`;
+  const response = await fetch(`/api/limitup-dataset${params}`, { cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.notice || "涨停池暂不可用");
+  state.dataset = data;
+  state.endDate = data.days[data.days.length - 1].date;
+  const picker = $("#history-date");
+  picker.max = new Date().toISOString().slice(0, 10);
+  picker.value = `${state.endDate.slice(0, 4)}-${state.endDate.slice(4, 6)}-${state.endDate.slice(6, 8)}`;
+  $("#history-today").disabled = data.days[data.days.length - 1].date === data.days[data.days.length - 1].date && !end ? true : false;
+  renderLeaders();
+  renderBoard();
+  loadDailySummary(state.endDate);
+}
+
+async function loadDailySummary(date) {
+  const panel = $("#daily-summary");
+  try {
+    const response = await fetch(`/api/daily-summary?date=${date}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.ok) { panel.hidden = true; return; }
+    $("#summary-date").textContent = `${data.date.slice(0, 4)}-${data.date.slice(4, 6)}-${data.date.slice(6, 8)} 复盘`;
+    $("#summary-time").textContent = data.generatedAt ? `生成于 ${data.generatedAt}` : "";
+    $("#summary-text").textContent = data.text || "";
+    $("#summary-mainlines").innerHTML = (data.mainlines || []).map(m => `<span>${esc(m)}</span>`).join("");
+    panel.hidden = false;
+  } catch {
+    panel.hidden = true;
+  }
+}
+
+async function loadForward(date, horizon) {
+  const key = `${date}:${horizon}`;
+  if (!state.forwardCache[key]) {
+    const response = await fetch(`/api/forward-premium?date=${date}&days=${horizon}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.notice || "后续溢价暂不可用");
+    state.forwardCache[key] = data;
+  }
+  return state.forwardCache[key];
+}
+
+// ---------- 涨停板块泳道 ----------
+function boardDays() { return state.dataset ? state.dataset.days.slice(-7) : []; }
+
+function sectorCard(sector, dayIndex) {
+  const heat = heatOf(sector), hc = heatClass(heat);
+  const quote = sector.pct != null ? `<span class="metric-pill ${sector.pct >= 0 ? "up" : "down"}">板块 ${sector.pct > 0 ? "+" : ""}${sector.pct}%</span>` : "";
+  return `<button class="sector-card" data-day="${dayIndex}" data-name="${esc(sector.name)}" aria-label="查看 ${esc(sector.name)} 详情"><span class="sector-top"><span class="sector-name">${esc(sector.name)}</span><span class="heat-dots" aria-label="热度 ${heat} 级">${[1, 2, 3, 4, 5].map(i => `<i class="${i <= heat ? `on ${hc}` : ""}"></i>`).join("")}</span></span><span class="sector-desc">龙头 ${esc(sector.stocks[0] ? sector.stocks[0].name : "--")} · ${esc(sector.stocks[0] ? sector.stocks[0].tag : "")}</span><span class="sector-metrics"><span class="metric-pill">${sector.count} 家</span>${quote}<span class="amount">${fmtYi(sector.amount)} 亿</span><span class="premium neutral">最高 ${sector.maxLbc} 板</span></span></button>`;
+}
+
+function renderBoard() {
+  if (state.view === "high") return renderHighBoard();
+  if (!state.dataset) return;
+  const days = boardDays();
+  const totals15 = cumulativeCounts();
+  const strictSet = new Set([...Object.entries(totals15)].filter(([, v]) => v >= 10).map(([k]) => k));
+  $("#board-title").textContent = `${days[0] ? fmtDate(days[0].date) : "--"} 至 ${days.length ? fmtDate(days[days.length - 1].date) : "--"} · 涨停板块演进`;
+  $("#board-eyebrow").textContent = "LIMIT-UP SECTOR FLOW · 真实涨停池";
+  $("#board").innerHTML = days.map((day, di) => {
+    let sectors = day.sectors.filter(s => (!state.minFive || s.count >= 5) && (!state.strict || strictSet.has(s.name)));
+    sectors.sort((a, b) => state.sort === "count" ? b.count - a.count || b.amount - a.amount : b.maxLbc - a.maxLbc || b.count - a.count);
+    return `<article class="lane"><header class="lane-head"><div class="lane-head-top"><button class="lane-date lane-action" data-action="date" data-day="${di}">${fmtDate(day.date)}</button><button class="lane-weekday lane-action" data-action="ladder" data-day="${di}">${day.weekday}</button></div><div class="lane-stat"><button class="lane-total lane-action" data-action="all" data-day="${di}">${day.total} 只涨停</button><span class="market-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div></header><div class="lane-list">${sectors.length ? sectors.map(s => sectorCard(s, di)).join("") : `<p class="empty-lane">当前筛选下暂无板块</p>`}</div></article>`;
+  }).join("");
+  $$(".sector-card").forEach(card => card.addEventListener("click", () => openDrawer(Number(card.dataset.day), card.dataset.name)));
+  $$(".lane-action").forEach(button => button.addEventListener("click", () => openDayAnalysis(button.dataset.action, Number(button.dataset.day))));
+  $("#strict-filter").closest("label").title = state.strict ? `严格筛选命中 ${strictSet.size} 个板块` : "15日内累计涨停 ≥10 家";
+}
+
+function cumulativeCounts() {
+  const totals = {};
+  if (!state.dataset) return totals;
+  state.dataset.days.forEach(day => day.sectors.forEach(s => { totals[s.name] = (totals[s.name] || 0) + s.count; }));
+  return totals;
+}
+
+// ---------- 板块详情弹窗（居中） ----------
+function openDrawer(dayIndex, sectorName) {
+  const day = boardDays()[dayIndex];
+  const sector = day && day.sectors.find(s => s.name === sectorName);
+  if (!sector) return;
+  const themeSet = new Set(sector.themes && sector.themes.length ? sector.themes : [sector.name]);
+  // 跨日按题材集合交集匹配同一条主线（主线名可能逐日漂移）
+  const matchSector = d => d.sectors.find(s => {
+    const names = s.themes && s.themes.length ? s.themes : [s.name];
+    return names.some(t => themeSet.has(t));
+  });
+  state.selected = { dayIndex, sectorName };
+  $$(".sector-card").forEach(c => c.classList.toggle("is-selected", Number(c.dataset.day) === dayIndex && c.dataset.name === sectorName));
+  const aliases = (sector.themes || []).filter(t => t !== sector.name);
+  $("#drawer-date").textContent = `${fmtDate(day.date)} / ${day.weekday}${aliases.length ? ` · 含 ${aliases.slice(0, 4).join("/")}` : ""}`;
+  $("#drawer-title").textContent = sector.name;
+
+  // 板块内股票：当日全部涨停股，按龙头强度排序
+  $("#drawer-stock-count").textContent = `${sector.count} 家涨停 · 按连板与封单排序`;
+  let stocksHtml = sector.stocks.map((s, i) => stockRow(s, i, sector.name)).join("");
+  if (state.showBreak) {
+    const broken = (day.broken || []).filter(b => (b.concepts && b.concepts.length ? b.concepts.some(t => themeSet.has(t)) : b.sector === sector.name));
+    stocksHtml += broken.map(b => `<div class="stock-row real is-broken is-clickable" data-code="${esc(b.code)}" data-name="${esc(b.name)}" title="点击查看日K与分时"><span><strong>${esc(b.name)}</strong><small>${esc(b.code)} · 炸板 ${b.zbc} 次未回封</small></span><span class="stock-amounts">${fmtYi(b.amount)} 亿</span></div>`).join("");
+  }
+  $("#drawer-stocks").innerHTML = stocksHtml || `<p class="stair-empty">当日无涨停个股</p>`;
+  $$("#drawer-stocks .stock-row.is-clickable").forEach(row => row.addEventListener("click", () => openStockChart(row.dataset.code, row.dataset.name)));
+  $$("#drawer-stocks .stock-move").forEach(button => button.addEventListener("click", e => { e.stopPropagation(); moveStock(button); }));
+
+  // 最近三天涨停的隔天溢价率（所选日及其前两个交易日）
+  const allDays = state.dataset.days;
+  const upto = allDays.filter(d => d.date <= day.date).slice(-3);
+  $("#premium-3d").innerHTML = upto.map(d => {
+    const sec = matchSector(d);
+    const rows = sec ? sec.stocks.map(s => `<div class="premium-row" data-code="${esc(s.code)}" data-date="${d.date}"><span><b>${esc(s.name)}</b><small>${esc(s.tag)}</small></span><em class="premium-value">…</em></div>`).join("") : `<p class="stair-empty">当日无涨停</p>`;
+    return `<div class="premium-day"><header>${fmtDate(d.date)} ${d.weekday}<span>${sec ? sec.count + " 家" : ""}</span></header>${rows}</div>`;
+  }).join("");
+  upto.forEach(d => {
+    loadForward(d.date, 1).then(fwd => {
+      if (!state.selected || state.selected.sectorName !== sector.name) return;
+      const map = new Map(fwd.rows.map(r => [r.code, r.forward]));
+      $$(`#premium-3d .premium-row[data-date="${d.date}"]`).forEach(row => {
+        const forward = map.get(row.dataset.code);
+        const v = forward && forward[0];
+        const cell = row.querySelector(".premium-value");
+        cell.textContent = v == null ? "--" : `${v > 0 ? "+" : ""}${v}%`;
+        cell.className = `premium-value ${v == null ? "" : v >= 0 ? "up" : "down"}`;
+        if (v == null) cell.title = "次日尚未收盘";
+      });
+    }).catch(() => {});
+  });
+
+  // 近7日涨停数量趋势
+  const trend = boardDays().map(d => {
+    const hit = matchSector(d);
+    return { date: fmtDate(d.date), count: hit ? hit.count : 0 };
+  });
+  const maxCount = Math.max(...trend.map(t => t.count), 1);
+  $("#trend-chart").innerHTML = trend.map((t, i) => `<div class="trend-col ${i === trend.length - 1 ? "latest" : ""}"><b>${t.count}</b><i style="height:${Math.max(6, Math.round(t.count / maxCount * 100))}%"></i><span>${t.date}</span></div>`).join("");
+
+  $("#detail-drawer").classList.add("is-open");
+  $("#detail-drawer").setAttribute("aria-hidden", "false");
+  $("#drawer-backdrop").hidden = false;
+  state.drawerOrigin = document.querySelector(`.sector-card[data-day="${dayIndex}"][data-name="${CSS.escape(sector.name)}"]`);
+  $("#drawer-close").focus();
+}
+
+function stockRow(s, i, bucketName) {
+  const reason = s.reason ? esc(s.reason) : (s.concepts || []).slice(0, 3).map(esc).join("/");
+  const tip = s.reasonInfo ? esc(s.reasonInfo.slice(0, 160)) : "点击查看日K与分时";
+  return `<div class="stock-row real is-clickable" data-code="${esc(s.code)}" data-name="${esc(s.name)}" title="${tip}"><span><strong>${i + 1}. ${esc(s.name)}</strong><small>${esc(s.code)} · ${esc(s.tag)}${s.zbc ? ` · 炸板${s.zbc}次` : ""}${s.theme ? ` · <em class="stock-theme">${esc(s.theme)}</em>` : ""}${reason ? ` · ${reason}` : ""}${s.manual ? ` · <em class="stock-manual">手动</em>` : ""}</small></span><span class="stock-amounts">${fmtYi(s.amount)}亿 · 封单${fmtYi(s.fund)}亿<button class="stock-move" data-code="${esc(s.code)}" data-name="${esc(s.name)}" data-bucket="${esc(bucketName || "")}" title="手动调整板块">调</button></span></div>`;
+}
+
+async function moveStock(button) {
+  const code = button.dataset.code, name = button.dataset.name;
+  const current = button.dataset.bucket || "";
+  const input = prompt(`把「${name}」归入哪个板块？\n（输入新板块名；输入"恢复"清除手动设置，回到自动判定）`, current);
+  if (input === null) return;
+  const sector = input.trim() === "恢复" ? "" : input.trim();
+  if (!sector && input.trim() !== "恢复") return;
+  try {
+    const response = await fetch("/api/sector-override", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, sector }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.notice || "保存失败");
+    showToast(sector ? `${name} → ${sector}，重新计算中…` : `${name} 已恢复自动判定，重新计算中…`);
+    await loadDataset(state.endDate, { silent: true });
+    // 重新打开该股票当前所在的板块弹窗
+    const dayIndex = state.selected != null ? state.selected.dayIndex : null;
+    if (dayIndex != null) {
+      const day = boardDays()[dayIndex];
+      const target = day && day.sectors.find(s => s.stocks.some(st => st.code === code));
+      if (target) openDrawer(dayIndex, target.name);
+    }
+  } catch (err) {
+    showToast(err.message || "保存失败");
+  }
+}
+
+function closeDrawer() {
+  $("#detail-drawer").classList.remove("is-open");
+  $("#detail-drawer").setAttribute("aria-hidden", "true");
+  $("#drawer-backdrop").hidden = true;
+  $$(".sector-card").forEach(c => c.classList.remove("is-selected"));
+  state.selected = null;
+  const origin = state.drawerOrigin;
+  state.drawerOrigin = null;
+  if (origin && document.contains(origin)) origin.focus();
+}
+
+// ---------- 分析弹窗 ----------
+function dialogFrame(kicker, title, subtitle, html) {
+  $("#analysis-kicker").textContent = kicker;
+  $("#analysis-title").textContent = title;
+  $("#analysis-subtitle").textContent = subtitle;
+  $("#analysis-body").style.setProperty("--premium-cols", state.premiumDays);
+  $("#analysis-body").innerHTML = html;
+  $("#analysis-dialog").showModal();
+}
+
+async function openDayAnalysis(action, index) {
+  const day = boardDays()[index];
+  if (!day) return;
+  if (action === "ladder") return openLadder(day, index);
+  if (action === "all") return openAllStocks(day, index);
+  dialogFrame("DATE RELAY", `${fmtDate(day.date)} · 板块接力质量`, `${day.weekday} · 正在计算真实后续溢价……`, `<p class="empty-lane board-loading">按涨停日收盘对收盘计算 D+1 至 D+${state.premiumDays}……</p>`);
+  try {
+    const fwd = await loadForward(day.date, state.premiumDays);
+    const byCode = new Map(fwd.rows.map(r => [r.code, r]));
+    const rows = day.sectors.slice(0, 8).map(sector => {
+      const members = sector.stocks.map(s => byCode.get(s.code)).filter(Boolean);
+      const avg = Array.from({ length: state.premiumDays }, (_, i) => {
+        const vals = members.map(m => m.forward[i]).filter(v => v != null);
+        return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+      });
+      const cum = avg.reduce((a, b) => a + (b || 0), 0);
+      return { sector, avg, cum };
+    }).sort((a, b) => b.cum - a.cum);
+    const html = `<div class="analysis-summary"><div><span>当日涨停</span><strong>${day.total}</strong></div><div><span>领先板块</span><strong>${esc(day.sectors[0]?.name || "--")}</strong></div><div><span>观察周期</span><strong>${state.premiumDays} 日</strong></div></div><div class="data-table"><div class="data-row head"><span>板块（平均溢价）</span>${Array.from({ length: state.premiumDays }, (_, i) => `<span>D+${i + 1}</span>`).join("")}</div>${rows.map((r, ri) => `<button class="data-row drill-sector" data-name="${esc(r.sector.name)}" data-day="${index}"><strong>${esc(r.sector.name)} · ${r.sector.count}家 · 最高${r.sector.maxLbc}板</strong>${r.avg.map(v => `<span class="${v == null ? "" : v >= 0 ? "up" : "down"}">${v == null ? "--" : (v > 0 ? "+" : "") + v.toFixed(1) + "%"}</span>`).join("")}</button>`).join("")}</div><p class="analysis-foot-note">板块平均溢价 = 板块内涨停股收盘对收盘真实涨幅均值；-- 表示该交易日尚未到来。</p>`;
+    dialogFrame("DATE RELAY", `${fmtDate(day.date)} · 板块接力质量`, `${day.weekday} · 真实后续溢价 · 点击行下钻板块`, html);
+    $$(".drill-sector").forEach(b => b.addEventListener("click", () => { $("#analysis-dialog").close(); openDrawer(Number(b.dataset.day), b.dataset.name); }));
+  } catch (error) {
+    dialogFrame("DATE RELAY", `${fmtDate(day.date)} · 板块接力质量`, day.weekday, `<p class="empty-lane board-loading">${esc(error.message)}</p>`);
+  }
+}
+
+function openLadder(day, index) {
+  const rows = day.stocks.filter(x => x.lbc >= 2);
+  const maxBoard = rows.length ? Math.max(...rows.map(x => x.lbc)) : 1;
+  const levels = Array.from({ length: maxBoard - 1 }, (_, i) => maxBoard - i);
+  const html = `<div class="ladder-stack">${levels.map(level => { const hits = rows.filter(x => x.lbc === level); return `<section><header><strong>${level}板</strong><span>${hits.length} 家</span></header><div>${hits.length ? hits.map(x => `<button class="stock-chip" data-name="${esc(x.name)}"><b>${esc(x.name)}</b><small>${esc(x.sector)} · ${esc(x.tag)} · 封单${fmtYi(x.fund)}亿</small></button>`).join("") : `<p>梯队空缺</p>`}</div></section>`; }).join("")}</div>${rows.length ? "" : `<p class="empty-lane board-loading">当日无连板个股</p>`}`;
+  dialogFrame("LIMIT-UP LADDER", `${fmtDate(day.date)} · 连板个股梯队`, `${day.weekday} · 真实涨停池`, html);
+}
+
+function openAllStocks(day, index) {
+  const html = `<div class="grouped-stocks">${day.sectors.map(sector => `<section><header><div><strong>${esc(sector.name)}</strong><span>${sector.count} 家 · ${fmtYi(sector.amount)} 亿 · 最高${sector.maxLbc}板</span></div><button class="group-drill" data-name="${esc(sector.name)}" data-day="${index}">板块详情</button></header>${sector.stocks.map(x => `<div class="group-stock"><span><b>${esc(x.name)}</b><small>${esc(x.code)}</small></span><span>${esc(x.tag)}</span><span>${fmtYi(x.amount)}亿</span><span class="up">封单${fmtYi(x.fund)}亿</span></div>`).join("")}</section>`).join("")}</div>`;
+  dialogFrame("DAILY LIMIT-UP POOL", `${fmtDate(day.date)} · 全部涨停个股`, `${day.weekday} · 按板块分组 · 真实涨停池`, html);
+  $$(".group-drill").forEach(b => b.addEventListener("click", () => { $("#analysis-dialog").close(); openDrawer(Number(b.dataset.day), b.dataset.name); }));
+}
+
+// ---------- 15日阶梯 / 高度 / 排行 ----------
+function openStaircase(name) {
+  const days = state.dataset.days;
+  const html = `<div class="staircase">${days.map(d => { const sector = d.sectors.find(s => s.name === name); const stocks = sector ? sector.stocks : []; return `<section><header><strong>${fmtDate(d.date)}</strong><span>${stocks.length} 家 · ${d.weekday}</span></header><div>${stocks.length ? stocks.map(x => `<button class="stair-chip ${tagClass(x.tag)}" data-code="${esc(x.code)}"><b>${esc(x.name)}</b><small>${esc(x.tag)}${x.zbc ? ` · 炸${x.zbc}` : ""} · 封单${fmtYi(x.fund)}亿</small></button>`).join("") : `<p class="stair-empty">当日无涨停</p>`}</div></section>`; }).join("")}</div>`;
+  dialogFrame("SECTOR STAIRCASE", `${esc(name)} · 15日涨停个股阶梯`, "按龙头强度排序（连板数 → 封单金额） · 红色连板 · 蓝色多天板 · 灰色首板", html);
+}
+
+function openHeight() {
+  const days = state.dataset.days;
+  const leadersMap = new Map();
+  days.forEach(d => d.stocks.forEach(s => {
+    const cur = leadersMap.get(s.code);
+    if (!cur || s.lbc > cur.maxLbc) leadersMap.set(s.code, { ...s, maxLbc: Math.max(s.lbc, cur ? cur.maxLbc : 0) });
+  }));
+  const leaders = [...leadersMap.values()].sort((a, b) => b.maxLbc - a.maxLbc || b.fund - a.fund).slice(0, 6);
+  const html = `<div class="height-matrix"><div class="matrix-row head"><span>高标股</span>${days.slice(-7).map(d => `<span>${fmtDate(d.date)}</span>`).join("")}</div>${leaders.map(stock => `<div class="matrix-row"><strong>${esc(stock.name)}<small>${esc(stock.sector)}</small></strong>${days.slice(-7).map(d => { const hit = d.stocks.find(x => x.code === stock.code); return `<span class="matrix-cell ${!hit ? "broken" : hit.lbc >= 3 ? "high" : ""}">${hit ? esc(hit.tag) : "断"}<small>${hit ? `封单${fmtYi(hit.fund)}亿` : ""}</small></span>`; }).join("")}</div>`).join("")}</div>`;
+  dialogFrame("15D HEIGHT MATRIX", "15日板块高度 · 高标追踪", "真实连板梯队 · 近7日明细", html);
+}
+
+function openRanking() {
+  const days = state.dataset.days;
+  const totals = cumulativeCounts();
+  const top = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const html = `<div class="rank-layout"><section><h3>15日强度趋势</h3>${top.map(([name]) => `<div class="rank-trend"><span>${esc(name)}</span><div>${days.map(d => { const hit = d.sectors.find(s => s.name === name); return `<i style="height:${hit ? Math.min(100, hit.count * 16 + 8) : 5}%"></i>`; }).join("")}</div></div>`).join("")}</section><section class="rank-cards">${top.map(([name, count], i) => `<button data-name="${esc(name)}"><small>0${i + 1}</small><strong>${esc(name)}</strong><span>${count} 次涨停</span><b>${days.filter(d => d.sectors.some(s => s.name === name)).length} 日入榜</b></button>`).join("")}</section></div>`;
+  dialogFrame("15D SECTOR RANKING", "15日板块强度排行", "真实累计涨停家数与入榜天数", html);
+  $$(".rank-cards button").forEach(b => b.addEventListener("click", () => { $("#analysis-dialog").close(); openStaircase(b.dataset.name); }));
+}
+
+// ---------- 板块领先度 ----------
+function renderLeaders() {
+  const totals = cumulativeCounts();
+  const top = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  $("#leader-chips").innerHTML = top.map(([name, count], i) => `<button class="leader-chip" data-name="${esc(name)}"><b>${String(i + 1).padStart(2, "0")}</b>${esc(name)} · ${count}</button>`).join("");
+  $$(".leader-chip").forEach(b => b.addEventListener("click", () => openStaircase(b.dataset.name)));
+}
+
+// ---------- 百日新高 ----------
+async function renderHighBoard() {
+  $("#board-title").textContent = "百日新高扩散";
+  $("#board-eyebrow").textContent = "100-DAY HIGH DIFFUSION · WIND";
+  const board = $("#board");
+  const day = state.highDate || "";
+  const cacheKey = day || "today";
+  try {
+    if (!state.highCache[cacheKey]) {
+      board.innerHTML = `<p class="empty-lane board-loading">正在通过 Wind 筛选创百日新高个股……</p>`;
+      const response = await fetch(`/api/hundred-high${day ? `?date=${day}` : ""}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.notice || "百日新高暂不可用");
+      state.highCache[cacheKey] = data;
+    }
+    const data = state.highCache[cacheKey];
+    const maxSector = data.sectors.length ? data.sectors[0].count : 1;
+    const stocks = state.highMode === "sector"
+      ? data.sectors.flatMap(sec => [{ header: sec }, ...data.stocks.filter(s => s.sector === sec.name)])
+      : data.stocks;
+    $("#board-title").textContent = `${fmtDate(data.date)} ${data.weekday} · 百日新高`;
+    board.innerHTML = `<div class="high-panel"><div class="high-summary"><div><span>新高数量</span><strong>${data.total}</strong></div><div><span>今日新增</span><strong>${data.newCount == null ? "--" : data.newCount}</strong></div><div><span>覆盖行业</span><strong>${data.sectors.length}</strong></div><div class="high-mode"><button class="${state.highMode === "sector" ? "is-active" : ""}" data-high-mode="sector">按板块</button><button class="${state.highMode === "stock" ? "is-active" : ""}" data-high-mode="stock">按个股</button></div></div><div class="high-sectors">${data.sectors.map(s => `<div class="high-sector-row"><span>${esc(s.name)}</span><div><i style="width:${Math.round(s.count / maxSector * 100)}%"></i></div><b>${s.count}</b></div>`).join("")}</div><div class="high-stocks">${stocks.map(item => item.header ? `<div class="high-group-head">${esc(item.header.name)}（${item.header.count}）</div>` : `<div class="high-stock-row"><span><b>${esc(item.name)}</b><small>${esc(item.code)}</small></span><span class="${(item.pct ?? 0) >= 0 ? "up" : "down"}">${item.pct == null ? "--" : (item.pct > 0 ? "+" : "") + item.pct + "%"}</span><span>${esc(item.sector)}</span></div>`).join("")}</div><p class="analysis-foot-note">${esc(data.source)} · ${esc(data.fetchedAt)} · ${esc(data.notice)}</p></div>`;
+    $$("[data-high-mode]").forEach(b => b.addEventListener("click", () => { state.highMode = b.dataset.highMode; renderHighBoard(); }));
+  } catch (error) {
+    board.innerHTML = `<p class="empty-lane board-loading">${esc(error.message)}<br>不会用演示数据冒充真实新高。</p>`;
+  }
+}
+
+// ---------- 指数行情条 ----------
+function renderTicker(indices = []) {
+  const map = { "000001": ["#ticker-sh", "上证"], "399001": ["#ticker-sz", "深证"], "399006": ["#ticker-cy", "创业板"] };
+  indices.forEach(x => {
+    const target = map[x.code];
+    if (!target) return;
+    const cls = x.pct >= 0 ? "up" : "down";
+    $(target[0]).innerHTML = `<b>${target[1]}</b> ${Number(x.price).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <em class="${cls}">${x.pct >= 0 ? "+" : ""}${Number(x.pct).toFixed(2)}%</em>`;
+  });
+}
+
+async function loadMarket(manual = false) {
+  const dot = $("#connection-dot");
+  dot.className = "connection-dot is-loading";
+  $("#connection-text").textContent = "更新免费行情";
+  try {
+    const r = await fetch("/api/market", { cache: "no-store" }), data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.notice || "行情不可用");
+    renderTicker(data.indices || []);
+    state.marketData = data;
+    $("#freshness").textContent = (data.fetchedAt || "").split(" ")[1] || "--:--:--";
+    $("#connection-text").textContent = "免费行情已连接";
+    $("#source-notice").textContent = `${data.notice}；涨停板块与百日新高已接入真实数据源。`;
+    dot.className = "connection-dot";
+    if (manual) showToast("免费指数行情已更新");
+  } catch (e) {
+    dot.className = "connection-dot is-error";
+    $("#connection-text").textContent = "指数行情暂不可用";
+    $("#source-notice").textContent = `${e.message}；涨停池与新高数据不受影响。`;
+    if (manual) showToast("指数行情暂不可用");
+  }
+}
+
+// ---------- 个股图表弹窗（日K + 分时） ----------
+async function openStockChart(code, name) {
+  const dlg = $("#stock-dialog");
+  $("#stock-chart-title").textContent = `${name} · ${code}`;
+  $("#stock-chart-sub").textContent = "读取行情中……";
+  $("#stock-chart-note").textContent = "";
+  if (!dlg.open) dlg.showModal();
+  try {
+    const r = await fetch(`/api/stock-chart?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.notice || "图表数据不可用");
+    drawKline($("#kline-chart"), data.daily || []);
+    drawMinute($("#minute-chart"), data.minute || [], data.prevClose);
+    $("#stock-chart-sub").textContent = `${data.minuteDate ? `分时 ${data.minuteDate} · ` : ""}${data.fetchedAt}`;
+    $("#stock-chart-note").textContent = data.source || "";
+  } catch (error) {
+    $("#stock-chart-sub").textContent = error.message;
+  }
+}
+
+function fitCanvas(canvas, cssH) {
+  const cssW = Math.max(320, canvas.parentElement.clientWidth - 4);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  return [ctx, cssW, cssH];
+}
+
+const CHART_UP = "#e5453c", CHART_DOWN = "#12a05c", CHART_GRID = "#ececf0", CHART_TEXT = "#8e8e93";
+
+function drawKline(canvas, rows) {
+  const [ctx, W, H] = fitCanvas(canvas, 320);
+  ctx.font = "10px -apple-system, sans-serif";
+  if (!rows.length) { ctx.fillStyle = CHART_TEXT; ctx.fillText("暂无日K数据", 12, 20); return; }
+  const data = rows.map(r => ({ d: r[0], o: +r[1], c: +r[2], h: +r[3], l: +r[4], v: +r[5] || 0 }));
+  const padL = 8, padR = 52, padT = 10, priceH = H * 0.68, volTop = priceH + 14, volH = H - volTop - 18;
+  const hi = Math.max(...data.map(x => x.h)), lo = Math.min(...data.map(x => x.l));
+  const vmax = Math.max(...data.map(x => x.v), 1);
+  const py = v => padT + (hi - v) / (hi - lo || 1) * (priceH - padT - 6);
+  const n = data.length, slot = (W - padL - padR) / n, body = Math.max(1.5, slot * 0.62);
+  const x = i => padL + slot * i + slot / 2;
+  ctx.strokeStyle = CHART_GRID; ctx.lineWidth = 1;
+  [0.25, 0.5, 0.75].forEach(f => { const y = padT + f * (priceH - padT); ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke(); });
+  const ma = (arr, p, i) => i >= p - 1 ? arr.slice(i - p + 1, i + 1).reduce((a, b) => a + b.c, 0) / p : null;
+  data.forEach((k, i) => {
+    const up = k.c >= k.o, color = up ? CHART_UP : CHART_DOWN;
+    ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(x(i), py(k.h)); ctx.lineTo(x(i), py(k.l)); ctx.stroke();
+    const t = py(Math.max(k.o, k.c)), b = py(Math.min(k.o, k.c));
+    if (up) { ctx.lineWidth = 1; ctx.strokeRect(x(i) - body / 2, t, body, Math.max(1, b - t)); }
+    else ctx.fillRect(x(i) - body / 2, t, body, Math.max(1, b - t));
+    const vh = k.v / vmax * volH;
+    ctx.globalAlpha = 0.75; ctx.fillRect(x(i) - body / 2, volTop + volH - vh, body, vh); ctx.globalAlpha = 1;
+  });
+  [[5, "#ff9f0a"], [10, "#0a84ff"]].forEach(([p, color]) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.beginPath();
+    let started = false;
+    data.forEach((k, i) => { const m = ma(data, p, i); if (m == null) return; const X = x(i), Y = py(m); started ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); started = true; });
+    ctx.stroke();
+    ctx.fillStyle = color; ctx.fillText(`MA${p}`, W - padR + 6, padT + 10 + (p === 5 ? 0 : 12));
+  });
+  ctx.fillStyle = CHART_TEXT;
+  ctx.fillText(hi.toFixed(2), W - padR + 6, py(hi) + 8);
+  ctx.fillText(lo.toFixed(2), W - padR + 6, py(lo));
+  ctx.fillText(data[0].d.slice(5), padL, H - 4);
+  ctx.textAlign = "right"; ctx.fillText(data[n - 1].d.slice(5), W - padR, H - 4); ctx.textAlign = "left";
+}
+
+function drawMinute(canvas, minute, prevClose) {
+  const [ctx, W, H] = fitCanvas(canvas, 220);
+  ctx.font = "10px -apple-system, sans-serif";
+  if (!minute.length || prevClose == null) { ctx.fillStyle = CHART_TEXT; ctx.fillText("暂无分时数据（非交易时段或数据源未覆盖）", 12, 20); return; }
+  const padL = 8, padR = 56, padT = 10, padB = 18;
+  const prices = minute.map(m => m[1]);
+  let hi = Math.max(...prices, prevClose), lo = Math.min(...prices, prevClose);
+  const span = Math.max(hi - prevClose, prevClose - lo, prevClose * 0.005);
+  hi = prevClose + span; lo = prevClose - span;
+  const n = minute.length;
+  const x = i => padL + (W - padL - padR) * i / (n - 1 || 1);
+  const y = v => padT + (hi - v) / (hi - lo) * (H - padT - padB);
+  const base = y(prevClose);
+  const upColor = prices[n - 1] >= prevClose ? CHART_UP : CHART_DOWN;
+  ctx.strokeStyle = CHART_GRID;
+  [0.25, 0.75].forEach(f => { const gy = padT + f * (H - padT - padB); ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W - padR, gy); ctx.stroke(); });
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = "#c7c7cc";
+  ctx.beginPath(); ctx.moveTo(padL, base); ctx.lineTo(W - padR, base); ctx.stroke(); ctx.setLineDash([]);
+  const grad = ctx.createLinearGradient(0, padT, 0, H - padB);
+  grad.addColorStop(0, upColor + "33"); grad.addColorStop(1, upColor + "05");
+  ctx.beginPath(); ctx.moveTo(x(0), y(prices[0]));
+  prices.forEach((p, i) => ctx.lineTo(x(i), y(p)));
+  ctx.lineTo(x(n - 1), base); ctx.lineTo(x(0), base); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x(0), y(prices[0]));
+  prices.forEach((p, i) => ctx.lineTo(x(i), y(p)));
+  ctx.strokeStyle = upColor; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.fillStyle = CHART_TEXT;
+  const pct = v => `${v.toFixed(2)} (${((v / prevClose - 1) * 100).toFixed(1)}%)`;
+  ctx.fillText(pct(hi), W - padR + 6, y(hi) + 8);
+  ctx.fillText(prevClose.toFixed(2), W - padR + 6, base + 3);
+  ctx.fillText(pct(lo), W - padR + 6, y(lo) + 4);
+  ctx.fillText("09:30", padL, H - 4);
+  ctx.textAlign = "center"; ctx.fillText("11:30/13:00", (W - padR + padL) / 2, H - 4);
+  ctx.textAlign = "right"; ctx.fillText("15:00", W - padR, H - 4); ctx.textAlign = "left";
+}
+
+// ---------- 控件 ----------
+$$(".view-tab").forEach(b => b.addEventListener("click", () => {
+  state.view = b.dataset.view;
+  $$(".view-tab").forEach(x => x.classList.toggle("is-active", x === b));
+  closeDrawer();
+  if (state.view === "high") { $("#board").classList.add("high-mode-on"); renderHighBoard(); }
+  else { $("#board").classList.remove("high-mode-on"); renderBoard(); }
+}));
+$("#count-filter").addEventListener("change", e => { state.minFive = e.target.checked; renderBoard(); });
+$("#strict-filter").addEventListener("change", e => { state.strict = e.target.checked; renderBoard(); showToast(state.strict ? `严格筛选已开启 · 命中 ${[...Object.entries(cumulativeCounts())].filter(([, v]) => v >= 10).length} 个板块` : "严格筛选已关闭"); });
+$("#heat-filter").addEventListener("change", e => { state.showBreak = e.target.checked; if (state.selected) openDrawer(state.selected.dayIndex, state.selected.sectorName); showToast(state.showBreak ? "板块详情将显示真实炸板记录" : "人气炸板已隐藏"); });
+$("#sort-button").addEventListener("click", e => { state.sort = state.sort === "count" ? "ladder" : "count"; e.currentTarget.textContent = state.sort === "count" ? "家数优先" : "高度优先"; renderBoard(); });
+$("#refresh-button").addEventListener("click", async () => { try { await loadDataset(state.endDate, { silent: true }); showToast("涨停池已刷新"); } catch (e2) { showToast(e2.message); } loadMarket(true); });
+$("#history-prev").addEventListener("click", () => {
+  const first = state.dataset.days[0].date;
+  const d = new Date(`${first.slice(0, 4)}-${first.slice(4, 6)}-${first.slice(6, 8)}T12:00:00`);
+  d.setDate(d.getDate() - 1);
+  const end = d.toISOString().slice(0, 10).replace(/-/g, "");
+  loadDataset(end).then(() => { $("#history-today").disabled = false; }).catch(e2 => showToast(e2.message));
+});
+$("#history-today").addEventListener("click", () => { loadDataset(null).then(() => { $("#history-today").disabled = true; }).catch(e2 => showToast(e2.message)); });
+$("#history-date").addEventListener("change", e => {
+  if (!e.target.value) return;
+  loadDataset(e.target.value.replace(/-/g, "")).then(() => { $("#history-today").disabled = false; }).catch(e2 => showToast(e2.message));
+});
+$("#premium-days").addEventListener("change", e => { state.premiumDays = Number(e.target.value); showToast(`溢价周期已切换为 ${state.premiumDays} 日`); });
+$("#ranking-button").addEventListener("click", openHeight);
+$("#leaders-button").addEventListener("click", openRanking);
+$("#drawer-close").addEventListener("click", closeDrawer);
+$("#drawer-backdrop").addEventListener("click", closeDrawer);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+$("#analysis-close").addEventListener("click", () => $("#analysis-dialog").close());
+$("#analysis-done").addEventListener("click", () => $("#analysis-dialog").close());
+$("#stock-chart-close").addEventListener("click", () => $("#stock-dialog").close());
+$("#method-button").addEventListener("click", () => $("#method-dialog").showModal());
+$("#model-card-button").addEventListener("click", () => $("#method-dialog").showModal());
+$("#sort-button").textContent = "家数优先";
+
+// ---------- 启动 ----------
+(async function boot() {
+  try {
+    await loadDataset(null);
+  } catch (error) {
+    $("#board").innerHTML = `<p class="empty-lane board-loading">${esc(error.message)}<br>点击「刷新行情」重试；不会用演示数据冒充真实涨停。</p>`;
+  }
+  loadMarket();
+  setInterval(loadMarket, 15000);
+})();
