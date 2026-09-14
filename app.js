@@ -125,8 +125,9 @@ function openDrawer(dayIndex, sectorName) {
   const sector = day && day.sectors.find(s => s.name === sectorName);
   if (!sector) return;
   const themeSet = new Set(sector.themes && sector.themes.length ? sector.themes : [sector.name]);
-  // 跨日按题材集合交集匹配同一条主线（主线名可能逐日漂移）
-  const matchSector = d => d.sectors.find(s => {
+  // 跨日匹配同一条主线：先按板块名精确匹配（保证所选日数字与板块卡完全一致），
+  // 名称漂移时再退回题材集合交集匹配
+  const matchSector = d => d.sectors.find(s => s.name === sector.name) || d.sectors.find(s => {
     const names = s.themes && s.themes.length ? s.themes : [s.name];
     return names.some(t => themeSet.has(t));
   });
@@ -313,7 +314,7 @@ function openRanking() {
 function renderLeaders() {
   const totals = cumulativeCounts();
   const top = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  $("#leader-chips").innerHTML = top.map(([name, count], i) => `<button class="leader-chip" data-name="${esc(name)}"><b>${String(i + 1).padStart(2, "0")}</b>${esc(name)} · ${count}</button>`).join("");
+  $("#leader-chips").innerHTML = top.map(([name, count], i) => `<button class="leader-chip" data-name="${esc(name)}"><b>${String(i + 1).padStart(2, "0")}</b>${esc(name)}<i>${count}</i></button>`).join("");
   $$(".leader-chip").forEach(b => b.addEventListener("click", () => openStaircase(b.dataset.name)));
 }
 
