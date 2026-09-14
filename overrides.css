@@ -379,3 +379,41 @@ dialog footer button { color: #fff; background: var(--cyan); border-radius: 12px
 /* ===== 静态分享版：隐藏需要后端的交互 ===== */
 .static-mode .stock-move { display: none; }
 .static-mode .deck-actions #refresh-button::after { content: "（静态版）"; }
+
+/* ===== 市场情绪温度计 ===== */
+body.view-sentiment .signal-rail,
+body.view-sentiment .board-meta .board-tools,
+body.view-sentiment .board-meta .legend,
+body.view-sentiment .daily-summary { display: none; }
+
+.sentiment-panel { background: #fff; border-radius: 24px; padding: 28px; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+.sentiment-hero { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; }
+.sentiment-gauge-svg { width: 240px; max-width: 60vw; display: block; }
+.gauge-num { font-size: 44px; font-weight: 700; }
+.gauge-label { font-size: 11px; fill: #86868b; }
+.sentiment-stage h3 { margin: 10px 0 6px; font-size: 20px; }
+.sentiment-stage p { color: #6e6e73; margin: 0 0 8px; max-width: 420px; line-height: 1.6; }
+.sentiment-stage small { color: #aeaeb2; }
+.stage-badge { display: inline-block; padding: 6px 16px; border-radius: 999px; border: 1px solid; font-weight: 700; font-size: 15px; }
+
+.sentiment-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 24px 0; }
+.sentiment-card { background: #f5f5f7; border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.sentiment-card span { font-size: 12px; color: #86868b; }
+.sentiment-card strong { font-size: 22px; font-weight: 700; color: #1d1d1f; }
+.sentiment-card small { font-size: 11px; color: #6e6e73; }
+.sentiment-card em { font-style: normal; font-size: 12px; font-weight: 600; color: #0071e3; }
+
+.sentiment-section { margin-top: 26px; }
+.sentiment-section h3 { font-size: 15px; margin: 0 0 12px; color: #1d1d1f; }
+.sentiment-trend-svg { width: 100%; height: auto; display: block; }
+.trend-grid { stroke: #e8e8ed; stroke-width: 1; }
+.trend-grid-label { font-size: 10px; fill: #aeaeb2; }
+.trend-x-label { font-size: 10px; fill: #86868b; }
+
+.stage-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.stage-item { display: flex; gap: 10px; padding: 12px; border-radius: 14px; background: #f5f5f7; opacity: .65; }
+.stage-item.is-active { opacity: 1; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.08); outline: 1.5px solid #e8e8ed; }
+.stage-item i { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; flex: none; }
+.stage-item strong { font-size: 13px; }
+.stage-item small { color: #86868b; margin-left: 6px; font-size: 11px; }
+.stage-item p { margin: 4px 0 0; font-size: 11px; color: #6e6e73; line-height: 1.5; }
