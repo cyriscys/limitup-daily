@@ -24,7 +24,16 @@
     var u = String(url);
     var m;
     if (/^\/api\/limitup-dataset/.test(u)) return realFetch("data/limitup-dataset.json", opt);
-    if (/^\/api\/hundred-high/.test(u)) return realFetch("data/hundred-high.json", opt);
+    if (/^\/api\/sector-momentum/.test(u)) return realFetch("data/sector-momentum.json", opt);
+    if ((m = u.match(/^\/api\/sector-detail\?name=([^&]+)/))) {
+      return realFetch("data/sector-details.json", opt).then(function (r) {
+        return r.json();
+      }).then(function (payload) {
+        var detail = payload && payload.details && payload.details[decodeURIComponent(m[1])];
+        if (detail) return respond(detail, 200);
+        return respond({ ok: false, notice: "该板块不在静态版 Top5 详情中" }, 404);
+      });
+    }
     if (/^\/api\/daily-summary/.test(u)) return realFetch("data/daily-summary.json", opt);
     if (/^\/api\/sentiment/.test(u)) return realFetch("data/sentiment.json", opt);
     if ((m = u.match(/^\/api\/forward-premium\?date=(\d{8})&days=(\d+)/))) {
