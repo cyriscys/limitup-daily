@@ -202,7 +202,7 @@ body { background: var(--bg); }
 .data-status { color: var(--muted); }
 .connection-dot { box-shadow: 0 0 0 4px rgba(18,128,92,.1); }
 .deck-title p, .board-meta p, .drawer-head p, dialog header p { color: var(--cyan); }
-.view-tabs { grid-template-columns: repeat(2, 1fr); border-color: var(--line); background: var(--panel-3); }
+.view-tabs { grid-template-columns: repeat(3, 1fr); border-color: var(--line); background: var(--panel-3); }
 .view-tab { color: var(--muted); }
 .view-tab span { color: #98989d; }
 .view-tab:hover { color: var(--text); }
@@ -420,3 +420,6 @@ body.view-sentiment .daily-summary { display: none; }
 
 /* 板块领先度芯片：数字直接跟在板块名后 */
 .leader-chip i { font-style: normal; margin-left: 5px; color: #86868b; font-weight: 600; }
+
+/* 板块卡：家数直接跟在板块名后 */
+.sector-count { font-style: normal; margin-left: 6px; font-size: 12px; font-weight: 600; color: #86868b; }
