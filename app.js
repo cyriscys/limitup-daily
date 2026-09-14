@@ -1,5 +1,5 @@
-// 交易脉冲 · 涨停板块 / 百日新高（真实数据版）
-// 数据源：东方财富涨停池/炸板池、腾讯日K（后续溢价）、Wind（百日新高）。
+// 交易脉冲 · 涨停板块 / 板块情绪周期 / 市场情绪（真实数据版）
+// 数据源：东方财富涨停池/炸板池、同花顺涨停聚焦板块、腾讯日K（后续溢价）。
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -19,9 +19,7 @@ const state = {
   drawerOrigin: null,
   marketData: null,
   forwardCache: {},
-  highCache: {},
-  highDate: null,
-  highMode: "sector",
+  sectorMomentum: null,
   sentiment: null,
 };
 
@@ -95,7 +93,6 @@ function sectorCard(sector, dayIndex) {
 }
 
 function renderBoard() {
-  if (state.view === "high") return renderHighBoard();
   if (!state.dataset) return;
   const days = boardDays();
   const totals15 = cumulativeCounts();
@@ -299,31 +296,100 @@ function renderLeaders() {
   $$(".leader-chip").forEach(b => b.addEventListener("click", () => openStaircase(b.dataset.name)));
 }
 
-// ---------- 百日新高 ----------
-async function renderHighBoard() {
-  $("#board-title").textContent = "百日新高扩散";
-  $("#board-eyebrow").textContent = "100-DAY HIGH DIFFUSION · WIND";
+// ---------- TOP 板块情绪周期 ----------
+function sparklineSVG(trend, color) {
+  const W = 120, H = 34, pad = 3;
+  const max = Math.max(...trend, 1);
+  const n = trend.length;
+  const x = i => pad + i * (W - pad * 2) / Math.max(1, n - 1);
+  const y = v => H - pad - (v / max) * (H - pad * 2);
+  const pts = trend.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const bars = trend.map((v, i) =>
+    `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.4" fill="${i === n - 1 ? color : "#c7c7cc"}"><title>${v} 家</title></circle>`
+  ).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" class="momentum-spark"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" opacity="0.7"/>${bars}</svg>`;
+}
+
+async function loadSectorMomentum(force) {
+  if (state.sectorMomentum && !force) return state.sectorMomentum;
+  const response = await fetch("/api/sector-momentum?days=5", { cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.notice || "板块情绪暂不可用");
+  state.sectorMomentum = data;
+  return data;
+}
+
+async function renderSectorMomentum() {
   const board = $("#board");
-  const day = state.highDate || "";
-  const cacheKey = day || "today";
+  $("#board-title").textContent = "TOP 板块情绪周期";
+  $("#board-eyebrow").textContent = "SECTOR MOMENTUM · 近 5 日最强主线";
+  if (!state.sectorMomentum) board.innerHTML = `<p class="empty-lane board-loading">正在计算板块强度与梯队（首次约需 1-2 分钟，抓取真实 K 线）……</p>`;
+  let data;
   try {
-    if (!state.highCache[cacheKey]) {
-      board.innerHTML = `<p class="empty-lane board-loading">正在通过 Wind 筛选创百日新高个股……</p>`;
-      const response = await fetch(`/api/hundred-high${day ? `?date=${day}` : ""}`, { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.notice || "百日新高暂不可用");
-      state.highCache[cacheKey] = data;
-    }
-    const data = state.highCache[cacheKey];
-    const maxSector = data.sectors.length ? data.sectors[0].count : 1;
-    const stocks = state.highMode === "sector"
-      ? data.sectors.flatMap(sec => [{ header: sec }, ...data.stocks.filter(s => s.sector === sec.name)])
-      : data.stocks;
-    $("#board-title").textContent = `${fmtDate(data.date)} ${data.weekday} · 百日新高`;
-    board.innerHTML = `<div class="high-panel"><div class="high-summary"><div><span>新高数量</span><strong>${data.total}</strong></div><div><span>今日新增</span><strong>${data.newCount == null ? "--" : data.newCount}</strong></div><div><span>覆盖行业</span><strong>${data.sectors.length}</strong></div><div class="high-mode"><button class="${state.highMode === "sector" ? "is-active" : ""}" data-high-mode="sector">按板块</button><button class="${state.highMode === "stock" ? "is-active" : ""}" data-high-mode="stock">按个股</button></div></div><div class="high-sectors">${data.sectors.map(s => `<div class="high-sector-row"><span>${esc(s.name)}</span><div><i style="width:${Math.round(s.count / maxSector * 100)}%"></i></div><b>${s.count}</b></div>`).join("")}</div><div class="high-stocks">${stocks.map(item => item.header ? `<div class="high-group-head">${esc(item.header.name)}（${item.header.count}）</div>` : `<div class="high-stock-row"><span><b>${esc(item.name)}</b><small>${esc(item.code)}</small></span><span class="${(item.pct ?? 0) >= 0 ? "up" : "down"}">${item.pct == null ? "--" : (item.pct > 0 ? "+" : "") + item.pct + "%"}</span><span>${esc(item.sector)}</span></div>`).join("")}</div><p class="analysis-foot-note">${esc(data.source)} · ${esc(data.fetchedAt)} · ${esc(data.notice)}</p></div>`;
-    $$("[data-high-mode]").forEach(b => b.addEventListener("click", () => { state.highMode = b.dataset.highMode; renderHighBoard(); }));
+    data = await loadSectorMomentum();
   } catch (error) {
-    board.innerHTML = `<p class="empty-lane board-loading">${esc(error.message)}<br>不会用演示数据冒充真实新高。</p>`;
+    if (state.view !== "sector") return;
+    board.innerHTML = `<p class="empty-lane board-loading">${esc(error.message)}<br>点击「刷新行情」重试；不会用演示数据冒充。</p>`;
+    return;
+  }
+  if (state.view !== "sector") return;
+  const mc = data.marketContext || {};
+  const ctx = `近 5 日日均涨停 ${mc.avgLimitup ?? "--"} 家 · 全场最高 ${mc.maxLadder ?? "--"} 板${mc.maxLadderName ? `（${esc(mc.maxLadderName)}）` : ""}${data.isIntraday ? " · 盘中数据，收盘后复核" : ""}`;
+  board.innerHTML = `<div class="momentum-panel">
+    <p class="momentum-context">${ctx}</p>
+    <div class="momentum-cards">${(data.sectors || []).map((s, i) => {
+      const color = s.phaseColor || "#868e96";
+      return `<button class="momentum-card" data-name="${esc(s.name)}" style="--phase:${color}">
+        <span class="momentum-rank">${String(i + 1).padStart(2, "0")}</span>
+        <span class="momentum-phase" style="background:${color}1a;color:${color};border-color:${color}55">${esc(s.phase)}</span>
+        <strong class="momentum-name">${esc(s.name)}</strong>
+        <span class="momentum-score">强度 ${s.score}</span>
+        ${sparklineSVG(s.dailyTrend || [], color)}
+        <span class="momentum-metrics"><span>5日 <b>${s.totalLimitup}</b> 家</span><span>最高 <b>${s.maxLbc}</b> 板</span><span>晋级 <b>${s.avgPromotion == null ? "--" : s.avgPromotion + "%"}</b></span><span>炸板 <b>${s.breakRate == null ? "--" : s.breakRate + "%"}</b></span></span>
+      </button>`;
+    }).join("")}</div>
+    <p class="analysis-foot-note">强度分 = 家数规模 30 + 高度 25 + 持续性 15 + 晋级率 15 + 隔日溢价 15（板块间 0-100 归一加权）；点开卡片看梯队与周期判定依据 · 生成于 ${esc(data.generatedAt || "")}</p>
+  </div>`;
+  $$(".momentum-card").forEach(card => card.addEventListener("click", () => openSectorDetail(card.dataset.name)));
+}
+
+function ladderGroup(title, stocks, note) {
+  const seal = v => { const s = String(v || "").padStart(6, "0"); return /^\d{6}$/.test(s) && s !== "000000" ? `${s.slice(0, 2)}:${s.slice(2, 4)}:${s.slice(4, 6)}` : ""; };
+  const rows = stocks.length ? stocks.map(s => {
+    const fbt = seal(s.firstSeal);
+    return `<button class="ladder-stock" data-code="${esc(s.code)}" data-name="${esc(s.name)}" title="点击查看日K与分时"><b>${esc(s.name)}</b><small>${s.lbc} 板${s.promoted ? " · 晋级" : " · 新面孔"}${s.zbc ? ` · 炸${s.zbc}` : ""}${fbt ? ` · 首封 ${fbt}` : ""}</small></button>`;
+  }).join("") : `<p class="stair-empty">空位</p>`;
+  return `<section class="ladder-group"><header><strong>${title}</strong><span>${stocks.length} 家${note ? ` · ${note}` : ""}</span></header><div class="ladder-list">${rows}</div></section>`;
+}
+
+async function openSectorDetail(name) {
+  dialogFrame("SECTOR CYCLE", `${esc(name)} · 情绪周期`, "读取梯队与判定依据……", `<p class="empty-lane board-loading">正在装配板块梯队……</p>`);
+  try {
+    const response = await fetch(`/api/sector-detail?name=${encodeURIComponent(name)}&days=5`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.notice || "板块详情暂不可用");
+    const color = data.phaseColor || "#868e96";
+    const ladder = data.ladder || { leader: [], core: [], rookie: [] };
+    const detailRows = (data.dailyDetail || []).map(d =>
+      `<div class="data-row"><strong>${fmtDate(d.date)}</strong><span>${d.count} 家</span><span>${d.maxLbc} 板</span><span>${d.rookie} 首板</span><span>${d.promotion == null ? "--" : d.promotion + "%"}</span><span>${d.breakRate == null ? "--" : d.breakRate + "%"}</span><span class="${d.premium == null ? "" : d.premium >= 0 ? "up" : "down"}">${d.premium == null ? "--" : (d.premium > 0 ? "+" : "") + d.premium + "%"}</span></div>`
+    ).join("");
+    const rules = (data.rules || []).map(r =>
+      `<li class="${r.hit ? "hit" : "miss"}"><i>${r.hit ? "✓" : "✕"}</i><span>${esc(r.rule_id)} ${esc(r.desc)}</span><em>${typeof r.value === "object" ? "" : esc(String(r.value))}</em></li>`
+    ).join("");
+    const html = `
+      <div class="cycle-hero"><span class="momentum-phase big" style="background:${color}1a;color:${color};border-color:${color}55">${esc(data.phase)}</span><div><strong>${esc(name)}</strong><small>强度分 ${data.score ?? "--"} · ${data.isIntraday ? "盘中数据，收盘后复核" : "收盘数据"}</small></div></div>
+      <div class="ladder-3col">
+        ${ladderGroup("龙头（最高连板）", ladder.leader || [])}
+        ${ladderGroup("中军（中间梯队）", ladder.core || [])}
+        ${ladderGroup("新兵（今日首板）", ladder.rookie || [], "源源不断为佳")}
+      </div>
+      <div class="data-table cycle-table"><div class="data-row head"><span>日期</span><span>家数</span><span>高度</span><span>首板</span><span>晋级率</span><span>炸板率</span><span>隔日溢价</span></div>${detailRows}</div>
+      <div class="cycle-rules"><h3>周期判定依据（命中即停，按主升→发酵→启动→分歧→退潮顺序）</h3><ul>${rules}</ul></div>
+      <p class="analysis-foot-note">梯队与判定全部来自涨停池/炸板池真实数据；点个股可看日K与分时 · 不构成投资建议</p>`;
+    dialogFrame("SECTOR CYCLE", `${esc(name)} · 情绪周期`, `近 5 日窗口 · ${esc(data.generatedAt || "")}`, html);
+    $$("#analysis-body .ladder-stock").forEach(b => b.addEventListener("click", () => openStockChart(b.dataset.code, b.dataset.name)));
+  } catch (error) {
+    dialogFrame("SECTOR CYCLE", `${esc(name)} · 情绪周期`, "", `<p class="empty-lane board-loading">${esc(error.message)}</p>`);
   }
 }
 
@@ -349,13 +415,13 @@ async function loadMarket(manual = false) {
     state.marketData = data;
     $("#freshness").textContent = (data.fetchedAt || "").split(" ")[1] || "--:--:--";
     $("#connection-text").textContent = "免费行情已连接";
-    $("#source-notice").textContent = `${data.notice}；涨停板块与百日新高已接入真实数据源。`;
+    $("#source-notice").textContent = `${data.notice}；涨停板块、板块情绪与市场情绪已接入真实数据源。`;
     dot.className = "connection-dot";
     if (manual) showToast("免费指数行情已更新");
   } catch (e) {
     dot.className = "connection-dot is-error";
     $("#connection-text").textContent = "指数行情暂不可用";
-    $("#source-notice").textContent = `${e.message}；涨停池与新高数据不受影响。`;
+    $("#source-notice").textContent = `${e.message}；涨停池与板块情绪数据不受影响。`;
     if (manual) showToast("指数行情暂不可用");
   }
 }
@@ -559,7 +625,7 @@ async function renderSentiment() {
 
 async function loadSentiment(force) {
   if (state.sentiment && !force) return state.sentiment;
-  const response = await fetch("/api/sentiment?days=15", { cache: "no-store" });
+  const response = await fetch("/api/sentiment?days=40", { cache: "no-store" });
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(data.notice || "情绪温度暂不可用");
   state.sentiment = data;
@@ -572,10 +638,11 @@ $$(".view-tab").forEach(b => b.addEventListener("click", () => {
   $$(".view-tab").forEach(x => x.classList.toggle("is-active", x === b));
   closeDrawer();
   document.body.classList.toggle("view-sentiment", state.view === "sentiment");
+  document.body.classList.toggle("view-sector", state.view === "sector");
   history.replaceState(null, "", state.view === "limit" ? location.pathname + location.search : `#${state.view}`);
-  if (state.view === "high") { $("#board").classList.add("high-mode-on"); renderHighBoard(); }
-  else if (state.view === "sentiment") { $("#board").classList.remove("high-mode-on"); renderSentiment(); }
-  else { $("#board").classList.remove("high-mode-on"); renderBoard(); }
+  if (state.view === "sector") renderSectorMomentum();
+  else if (state.view === "sentiment") renderSentiment();
+  else renderBoard();
 }));
 $("#count-filter").addEventListener("change", e => { state.minFive = e.target.checked; renderBoard(); });
 $("#strict-filter").addEventListener("change", e => { state.strict = e.target.checked; renderBoard(); showToast(state.strict ? `严格筛选已开启 · 命中 ${[...Object.entries(cumulativeCounts())].filter(([, v]) => v >= 10).length} 个板块` : "严格筛选已关闭"); });
@@ -584,6 +651,10 @@ $("#sort-button").addEventListener("click", e => { state.sort = state.sort === "
 $("#refresh-button").addEventListener("click", async () => {
   if (state.view === "sentiment") {
     try { await loadSentiment(true); renderSentiment(); showToast("情绪温度已刷新"); } catch (e2) { showToast(e2.message); }
+    return;
+  }
+  if (state.view === "sector") {
+    try { await loadSectorMomentum(true); renderSectorMomentum(); showToast("板块情绪已刷新"); } catch (e2) { showToast(e2.message); }
     return;
   }
   try { await loadDataset(state.endDate, { silent: true }); showToast("涨停池已刷新"); } catch (e2) { showToast(e2.message); } loadMarket(true);
@@ -620,10 +691,12 @@ $("#sort-button").textContent = "家数优先";
   }
   loadMarket();
   setInterval(loadMarket, 15000);
-  // 支持 #sentiment / #high 直达对应页签（可分享）
+  // 支持 #sentiment / #sector / #sector:板块名 直达对应页签或板块详情（可分享）
   const target = location.hash.replace("#", "");
-  if (["sentiment", "high"].includes(target)) {
-    const tab = document.querySelector(`[data-view="${target}"]`);
+  const [viewName, viewArg] = target.split(":");
+  if (["sentiment", "sector"].includes(viewName)) {
+    const tab = document.querySelector(`[data-view="${viewName}"]`);
     if (tab) tab.click();
+    if (viewName === "sector" && viewArg) openSectorDetail(decodeURIComponent(viewArg));
   }
 })();
