@@ -167,6 +167,7 @@ function openDrawer(dayIndex, sectorName) {
         cell.textContent = v == null ? "--" : `${v > 0 ? "+" : ""}${v}%`;
         cell.className = `premium-value ${v == null ? "" : v >= 0 ? "up" : "down"}`;
         if (v == null) cell.title = "次日尚未收盘";
+        else if (fwd.intraday) cell.title = "盘中实时涨幅，收盘后落定";
       });
     }).catch(() => {});
   });
@@ -289,26 +290,6 @@ function openStaircase(name) {
   dialogFrame("SECTOR STAIRCASE", `${esc(name)} · 15日涨停个股阶梯`, "按龙头强度排序（连板数 → 封单金额） · 红色连板 · 蓝色多天板 · 灰色首板", html);
 }
 
-function openHeight() {
-  const days = state.dataset.days;
-  const leadersMap = new Map();
-  days.forEach(d => d.stocks.forEach(s => {
-    const cur = leadersMap.get(s.code);
-    if (!cur || s.lbc > cur.maxLbc) leadersMap.set(s.code, { ...s, maxLbc: Math.max(s.lbc, cur ? cur.maxLbc : 0) });
-  }));
-  const leaders = [...leadersMap.values()].sort((a, b) => b.maxLbc - a.maxLbc || b.fund - a.fund).slice(0, 6);
-  const html = `<div class="height-matrix"><div class="matrix-row head"><span>高标股</span>${days.slice(-7).map(d => `<span>${fmtDate(d.date)}</span>`).join("")}</div>${leaders.map(stock => `<div class="matrix-row"><strong>${esc(stock.name)}<small>${esc(stock.sector)}</small></strong>${days.slice(-7).map(d => { const hit = d.stocks.find(x => x.code === stock.code); return `<span class="matrix-cell ${!hit ? "broken" : hit.lbc >= 3 ? "high" : ""}">${hit ? esc(hit.tag) : "断"}<small>${hit ? `封单${fmtYi(hit.fund)}亿` : ""}</small></span>`; }).join("")}</div>`).join("")}</div>`;
-  dialogFrame("15D HEIGHT MATRIX", "15日板块高度 · 高标追踪", "真实连板梯队 · 近7日明细", html);
-}
-
-function openRanking() {
-  const days = state.dataset.days;
-  const totals = cumulativeCounts();
-  const top = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const html = `<div class="rank-layout"><section><h3>15日强度趋势</h3>${top.map(([name]) => `<div class="rank-trend"><span>${esc(name)}</span><div>${days.map(d => { const hit = d.sectors.find(s => s.name === name); return `<i style="height:${hit ? Math.min(100, hit.count * 16 + 8) : 5}%"></i>`; }).join("")}</div></div>`).join("")}</section><section class="rank-cards">${top.map(([name, count], i) => `<button data-name="${esc(name)}"><small>0${i + 1}</small><strong>${esc(name)}</strong><span>${count} 次涨停</span><b>${days.filter(d => d.sectors.some(s => s.name === name)).length} 日入榜</b></button>`).join("")}</section></div>`;
-  dialogFrame("15D SECTOR RANKING", "15日板块强度排行", "真实累计涨停家数与入榜天数", html);
-  $$(".rank-cards button").forEach(b => b.addEventListener("click", () => { $("#analysis-dialog").close(); openStaircase(b.dataset.name); }));
-}
 
 // ---------- 板块领先度 ----------
 function renderLeaders() {
@@ -620,8 +601,6 @@ $("#history-date").addEventListener("change", e => {
   loadDataset(e.target.value.replace(/-/g, "")).then(() => { $("#history-today").disabled = false; }).catch(e2 => showToast(e2.message));
 });
 $("#premium-days").addEventListener("change", e => { state.premiumDays = Number(e.target.value); showToast(`溢价周期已切换为 ${state.premiumDays} 日`); });
-$("#ranking-button").addEventListener("click", openHeight);
-$("#leaders-button").addEventListener("click", openRanking);
 $("#drawer-close").addEventListener("click", closeDrawer);
 $("#drawer-backdrop").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
