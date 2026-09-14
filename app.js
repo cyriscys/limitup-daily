@@ -22,6 +22,7 @@ const state = {
   highCache: {},
   highDate: null,
   highMode: "sector",
+  sentiment: null,
 };
 
 function showToast(message) {
@@ -487,19 +488,124 @@ function drawMinute(canvas, minute, prevClose) {
   ctx.textAlign = "right"; ctx.fillText("15:00", W - padR, H - 4); ctx.textAlign = "left";
 }
 
+// ---------- 市场情绪温度计 ----------
+function stageColorMap(data) {
+  const map = {};
+  (data.stages || []).forEach(s => { map[s.name] = s.color; });
+  return map;
+}
+
+function gaugeSVG(temp, color) {
+  const r = 80, c = Math.PI * r;
+  const filled = Math.max(0, Math.min(100, temp)) / 100 * c;
+  return `<svg viewBox="0 0 200 116" class="sentiment-gauge-svg" role="img" aria-label="情绪温度 ${temp} 分">
+    <path d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke="#e8e8ed" stroke-width="14" stroke-linecap="round"/>
+    <path d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke="${color}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${filled.toFixed(1)} ${c.toFixed(1)}"/>
+    <text x="100" y="86" text-anchor="middle" class="gauge-num" fill="${color}">${temp}</text>
+    <text x="100" y="108" text-anchor="middle" class="gauge-label">情绪温度 / 100</text>
+  </svg>`;
+}
+
+function sentimentTrendSVG(days, colors) {
+  const W = 760, H = 220, padL = 36, padR = 16, padT = 16, padB = 32;
+  const xi = i => padL + i * (W - padL - padR) / Math.max(1, days.length - 1);
+  const yt = t => padT + (100 - t) / 100 * (H - padT - padB);
+  const grids = [0, 25, 45, 70, 100].map(g =>
+    `<line x1="${padL}" x2="${W - padR}" y1="${yt(g)}" y2="${yt(g)}" class="trend-grid"/><text x="${padL - 6}" y="${yt(g) + 4}" text-anchor="end" class="trend-grid-label">${g}</text>`
+  ).join("");
+  const pts = days.map((d, i) => `${xi(i).toFixed(1)},${yt(d.temp).toFixed(1)}`).join(" ");
+  const dots = days.map((d, i) =>
+    `<circle cx="${xi(i).toFixed(1)}" cy="${yt(d.temp).toFixed(1)}" r="5" fill="${colors[d.stage] || "#86868b"}"><title>${fmtDate(d.date)} ${d.weekday} · ${d.temp} 分 · ${d.stage}</title></circle>`
+  ).join("");
+  const step = Math.max(1, Math.ceil(days.length / 8));
+  const labels = days.map((d, i) => i % step === 0 || i === days.length - 1
+    ? `<text x="${xi(i).toFixed(1)}" y="${H - 10}" text-anchor="middle" class="trend-x-label">${fmtDate(d.date)}</text>` : ""
+  ).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" class="sentiment-trend-svg">${grids}<polyline points="${pts}" fill="none" stroke="#1d1d1f" stroke-width="2" stroke-linejoin="round" opacity="0.55"/>${dots}${labels}</svg>`;
+}
+
+async function renderSentiment() {
+  const board = $("#board");
+  $("#board-title").textContent = "市场情绪温度计";
+  $("#board-eyebrow").textContent = "MARKET SENTIMENT · 六指标量化打分";
+  if (!state.sentiment) board.innerHTML = `<p class="empty-lane board-loading">正在计算情绪温度（首次约需 1 分钟，抓取真实 K 线）……</p>`;
+  let data;
+  try {
+    data = await loadSentiment();
+  } catch (error) {
+    if (state.view !== "sentiment") return;
+    board.innerHTML = `<p class="empty-lane board-loading">${esc(error.message)}<br>点击「刷新行情」重试。</p>`;
+    return;
+  }
+  if (state.view !== "sentiment") return;
+  const latest = data.latest;
+  if (!latest) { board.innerHTML = `<p class="empty-lane">暂无情绪数据</p>`; return; }
+  const colors = stageColorMap(data);
+  const color = colors[latest.stage] || "#86868b";
+  const sc = latest.scores || {};
+  const premiumText = latest.premiumAvg == null ? "--" : (latest.premiumAvg > 0 ? "+" : "") + latest.premiumAvg + "%";
+  const cards = [
+    { label: "涨停家数", value: `${latest.zt} 家`, sub: `已剔除 ST/新股`, score: `+${sc.zt ?? 0} / 30` },
+    { label: "最高连板", value: `${latest.maxLbc} 板`, sub: "情绪天花板", score: `+${sc.height ?? 0} / 20` },
+    { label: "昨涨停今日溢价", value: premiumText, sub: `红盘率 ${latest.redRatio == null ? "--" : latest.redRatio + "%"}`, score: sc.premium == null ? "-- / 25" : `+${sc.premium} / 25` },
+    { label: "炸板率", value: `${latest.brokenRate}%`, sub: `炸板 ${latest.broken} 家`, score: `+${sc.broken ?? 0} / 15` },
+    { label: "跌停家数", value: `${latest.downLimit} 家`, sub: `大面（跌超5%）${latest.damain == null ? "--" : latest.damain} 家`, score: `${sc.downLimit ?? 0} / 0` },
+    { label: "连板晋级率", value: latest.promotion == null ? "--" : `${latest.promotion}%`, sub: "昨日2板+今日继续涨停", score: "结构信号" },
+  ];
+  const stageList = (data.stages || []).map(s =>
+    `<div class="stage-item ${s.name === latest.stage ? "is-active" : ""}"><i style="background:${s.color}"></i><div><strong>${esc(s.name)}</strong><small>${esc(s.range)}</small><p>${esc(s.desc)}</p></div></div>`
+  ).join("");
+  board.innerHTML = `
+    <div class="sentiment-panel">
+      <div class="sentiment-hero">
+        <div class="sentiment-gauge">${gaugeSVG(latest.temp, color)}</div>
+        <div class="sentiment-stage">
+          <div class="stage-badge" style="background:${color}1a;color:${color};border-color:${color}55">${esc(latest.stage)}</div>
+          <h3>${fmtDate(latest.date)} ${esc(latest.weekday)} · ${latest.temp} 分</h3>
+          <p>${esc(latest.stageNote || "")}</p>
+          <small>生成于 ${esc(data.fetchedAt)}</small>
+        </div>
+      </div>
+      <div class="sentiment-cards">${cards.map(c =>
+        `<div class="sentiment-card"><span>${c.label}</span><strong>${c.value}</strong><small>${c.sub}</small><em>${c.score}</em></div>`
+      ).join("")}</div>
+      <div class="sentiment-section"><h3>近 ${data.days.length} 日温度走势</h3>${sentimentTrendSVG(data.days, colors)}</div>
+      <div class="sentiment-section"><h3>五阶段判定标准</h3><div class="stage-list">${stageList}</div></div>
+      <p class="analysis-foot-note">${esc(data.rules.formula)}<br>涨停 ${esc(data.rules.zt)}；高度 ${esc(data.rules.height)}；溢价 ${esc(data.rules.premium)}；炸板率 ${esc(data.rules.broken)}；跌停 ${esc(data.rules.downLimit)}。<br>${esc(data.source)} · 不构成投资建议</p>
+    </div>`;
+}
+
+async function loadSentiment(force) {
+  if (state.sentiment && !force) return state.sentiment;
+  const response = await fetch("/api/sentiment?days=15", { cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.notice || "情绪温度暂不可用");
+  state.sentiment = data;
+  return data;
+}
+
 // ---------- 控件 ----------
 $$(".view-tab").forEach(b => b.addEventListener("click", () => {
   state.view = b.dataset.view;
   $$(".view-tab").forEach(x => x.classList.toggle("is-active", x === b));
   closeDrawer();
+  document.body.classList.toggle("view-sentiment", state.view === "sentiment");
+  history.replaceState(null, "", state.view === "limit" ? location.pathname + location.search : `#${state.view}`);
   if (state.view === "high") { $("#board").classList.add("high-mode-on"); renderHighBoard(); }
+  else if (state.view === "sentiment") { $("#board").classList.remove("high-mode-on"); renderSentiment(); }
   else { $("#board").classList.remove("high-mode-on"); renderBoard(); }
 }));
 $("#count-filter").addEventListener("change", e => { state.minFive = e.target.checked; renderBoard(); });
 $("#strict-filter").addEventListener("change", e => { state.strict = e.target.checked; renderBoard(); showToast(state.strict ? `严格筛选已开启 · 命中 ${[...Object.entries(cumulativeCounts())].filter(([, v]) => v >= 10).length} 个板块` : "严格筛选已关闭"); });
 $("#heat-filter").addEventListener("change", e => { state.showBreak = e.target.checked; if (state.selected) openDrawer(state.selected.dayIndex, state.selected.sectorName); showToast(state.showBreak ? "板块详情将显示真实炸板记录" : "人气炸板已隐藏"); });
 $("#sort-button").addEventListener("click", e => { state.sort = state.sort === "count" ? "ladder" : "count"; e.currentTarget.textContent = state.sort === "count" ? "家数优先" : "高度优先"; renderBoard(); });
-$("#refresh-button").addEventListener("click", async () => { try { await loadDataset(state.endDate, { silent: true }); showToast("涨停池已刷新"); } catch (e2) { showToast(e2.message); } loadMarket(true); });
+$("#refresh-button").addEventListener("click", async () => {
+  if (state.view === "sentiment") {
+    try { await loadSentiment(true); renderSentiment(); showToast("情绪温度已刷新"); } catch (e2) { showToast(e2.message); }
+    return;
+  }
+  try { await loadDataset(state.endDate, { silent: true }); showToast("涨停池已刷新"); } catch (e2) { showToast(e2.message); } loadMarket(true);
+});
 $("#history-prev").addEventListener("click", () => {
   const first = state.dataset.days[0].date;
   const d = new Date(`${first.slice(0, 4)}-${first.slice(4, 6)}-${first.slice(6, 8)}T12:00:00`);
@@ -534,4 +640,10 @@ $("#sort-button").textContent = "家数优先";
   }
   loadMarket();
   setInterval(loadMarket, 15000);
+  // 支持 #sentiment / #high 直达对应页签（可分享）
+  const target = location.hash.replace("#", "");
+  if (["sentiment", "high"].includes(target)) {
+    const tab = document.querySelector(`[data-view="${target}"]`);
+    if (tab) tab.click();
+  }
 })();
