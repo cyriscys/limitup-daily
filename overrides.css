@@ -417,3 +417,6 @@ body.view-sentiment .daily-summary { display: none; }
 .stage-item strong { font-size: 13px; }
 .stage-item small { color: #86868b; margin-left: 6px; font-size: 11px; }
 .stage-item p { margin: 4px 0 0; font-size: 11px; color: #6e6e73; line-height: 1.5; }
+
+/* 板块领先度芯片：数字直接跟在板块名后 */
+.leader-chip i { font-style: normal; margin-left: 5px; color: #86868b; font-weight: 600; }
