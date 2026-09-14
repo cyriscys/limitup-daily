@@ -26,6 +26,7 @@
     if (/^\/api\/limitup-dataset/.test(u)) return realFetch("data/limitup-dataset.json", opt);
     if (/^\/api\/hundred-high/.test(u)) return realFetch("data/hundred-high.json", opt);
     if (/^\/api\/daily-summary/.test(u)) return realFetch("data/daily-summary.json", opt);
+    if (/^\/api\/sentiment/.test(u)) return realFetch("data/sentiment.json", opt);
     if ((m = u.match(/^\/api\/forward-premium\?date=(\d{8})&days=(\d+)/))) {
       return realFetch("data/fwd-" + m[1] + "-" + m[2] + ".json", opt);
     }
