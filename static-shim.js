@@ -1,7 +1,19 @@
 (function () {
   // 静态托管版（GitHub Pages 等）没有后端 API，把 /api/* 映射到导出的 JSON 文件。
-  // 本地实时版（127.0.0.1:8765）直连 API，本脚本不生效。
+  // 有后端的环境（本地 8765、云服务器 80 端口等）直连 API，本脚本不生效。
+  // 判定方式：同步探测 /api/daily-summary，返回 JSON 说明有后端。
   if (location.port === "8765") return;
+  var hasBackend = false;
+  try {
+    var probe = new XMLHttpRequest();
+    probe.open("GET", "/api/daily-summary", false);
+    probe.send(null);
+    hasBackend = probe.status >= 200 && probe.status < 300 &&
+      (probe.responseText || "").trim().charAt(0) === "{";
+  } catch (e) {
+    hasBackend = false;
+  }
+  if (hasBackend) return;
   var realFetch = window.fetch.bind(window);
   function respond(payload, status) {
     return Promise.resolve(new Response(JSON.stringify(payload), {
