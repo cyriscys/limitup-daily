@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="description" content="交易脉冲——多交易日板块节奏与可解释预测工作台" />
+    <title>交易脉冲 · 多日板块节奏</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="overrides.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#board">跳到看板</a>
+    <header class="market-bar">
+      <a class="brand" href="#board" aria-label="交易脉冲首页"><strong>交易脉冲</strong><span>EXCHANGE PULSE</span></a>
+      <div class="market-tape" aria-label="实时指数">
+        <span id="ticker-sh"><b>上证</b> -- <em>--</em></span><span id="ticker-sz"><b>深证</b> -- <em>--</em></span><span id="ticker-cy"><b>创业板</b> -- <em>--</em></span>
+      </div>
+      <div class="data-status"><span id="connection-dot" class="connection-dot is-loading"></span><span id="connection-text">连接免费行情</span><time id="freshness">--:--:--</time></div>
+    </header>
+    <main>
+      <section class="command-deck" aria-labelledby="page-title">
+        <div class="deck-title"><p>MARKET RHYTHM / 市场节奏</p><h1 id="page-title">多日板块节奏</h1></div>
+        <nav class="view-tabs" aria-label="选择看板内容">
+          <button class="view-tab is-active" data-view="limit"><span>01</span>涨停板块</button><button class="view-tab" data-view="high"><span>02</span>百日新高</button>
+        </nav>
+        <div class="deck-actions"><button class="button secondary" id="ranking-button">15日高度</button><button class="button secondary" id="leaders-button">15日排行</button><button class="button primary" id="refresh-button">刷新行情</button></div>
+      </section>
+      <section class="signal-rail" aria-label="十五日领涨板块">
+        <div class="signal-label"><span>15D</span><div><strong>板块领先度</strong><small>连续性优先</small></div></div><div id="leader-chips" class="leader-chips"></div>
+        <div class="scope-controls"><label class="check-control"><input id="strict-filter" type="checkbox" /><span></span>严格筛选</label><label class="check-control"><input id="count-filter" type="checkbox" /><span></span>只看 ≥5 家</label><label class="check-control"><input id="heat-filter" type="checkbox" /><span></span>人气炸板</label><button class="sort-button is-active" id="sort-button">连板优先</button></div>
+      </section>
+      <section class="board-meta">
+        <div><p id="board-eyebrow">LIMIT-UP SECTOR FLOW</p><h2 id="board-title">最近 7 个交易日 · 涨停板块演进</h2></div>
+        <div class="board-tools"><button id="history-prev">加载更早</button><label>选择日期 <input id="history-date" type="date" max="2026-09-04" value="2026-09-04" /></label><button id="history-today" disabled>返回今日</button><label>溢价周期 <select id="premium-days"><option>2</option><option>3</option><option selected>5</option><option>7</option><option>10</option><option>15</option></select> 日</label></div>
+        <div class="legend" aria-label="图例"><span><i class="dot hot"></i>主线</span><span><i class="dot warm"></i>扩散</span><span><i class="dot cool"></i>退潮</span><span>点日期、星期或总数下钻</span></div>
+      </section>
+      <section class="daily-summary" id="daily-summary" hidden>
+        <div class="summary-head"><p>DAILY REVIEW / 每日复盘</p><strong id="summary-date">--</strong><time id="summary-time"></time></div>
+        <p class="summary-text" id="summary-text"></p>
+        <div class="summary-mainlines" id="summary-mainlines"></div>
+      </section>
+      <section id="board" class="lane-board" aria-live="polite"></section>
+      <section class="method-note"><div><span>DATA NOTE</span><strong>先看结构，再看结论</strong></div><p id="source-notice">涨停池、炸板池、题材概念与后续溢价均为真实公开数据（东方财富涨停池 / 核心题材 / 腾讯·新浪K线），非投资建议。</p><button id="method-button">查看数据口径</button></section>
+    </main>
+    <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+    <aside id="detail-drawer" class="detail-drawer" aria-labelledby="drawer-title" aria-hidden="true">
+      <header class="drawer-head"><div><p id="drawer-date">-- / --</p><h2 id="drawer-title">板块</h2></div><button id="drawer-close" aria-label="关闭详情">关闭</button></header>
+      <div class="drawer-body">
+        <section class="drawer-section"><div class="section-heading"><h3>板块内股票</h3><span id="drawer-stock-count" class="section-note">-- 家涨停</span></div><div id="drawer-stocks" class="stock-list"></div></section>
+        <section class="drawer-section"><div class="section-heading"><h3>最近三天涨停 · 隔天溢价率</h3><span class="section-note">收盘对收盘</span></div><div id="premium-3d" class="premium-3d"></div></section>
+        <section class="drawer-section"><div class="section-heading"><h3>近7日涨停数量趋势</h3></div><div id="trend-chart" class="trend-chart"></div></section>
+      </div>
+      <footer class="drawer-foot"><span>真实涨停池 · 非投资建议</span><button id="model-card-button">数据口径</button></footer>
+    </aside>
+    <dialog id="analysis-dialog" class="analysis-dialog"><div class="analysis-shell"><header><div><p id="analysis-kicker">DATE ANALYSIS</p><h2 id="analysis-title">日期分析</h2><small id="analysis-subtitle">历史演示数据</small></div><button id="analysis-close" aria-label="关闭分析">关闭</button></header><div id="analysis-body" class="analysis-body"></div><footer><span>样本口径 · 不构成投资建议</span><button id="analysis-done">完成查看</button></footer></div></dialog>
+    <dialog id="stock-dialog" class="stock-dialog"><div class="analysis-shell"><header><div><p>STOCK CHART</p><h2 id="stock-chart-title">个股</h2><small id="stock-chart-sub">读取行情中……</small></div><button id="stock-chart-close" aria-label="关闭图表">关闭</button></header><div class="stock-chart-body"><section><h3>当日分时</h3><canvas id="minute-chart"></canvas></section><section><h3>日 K · 近 60 交易日（前复权）</h3><canvas id="kline-chart"></canvas></section><p class="analysis-foot-note" id="stock-chart-note"></p></div></div></dialog>
+    <dialog id="method-dialog"><form method="dialog"><header><div><p>DATA CARD</p><h2>数据口径</h2></div><button aria-label="关闭">关闭</button></header><div class="dialog-content"><p>本页全部数据来自真实公开源，不用演示数据冒充：</p><dl><div><dt>涨停/炸板名单</dt><dd>东方财富涨停池、炸板池公开端点，支持历史交易日</dd></div><div><dt>题材概念</dt><dd>东方财富 F10 核心题材中的精准概念（一只股可属多个题材，无概念时回退行业）；板块涨幅与主力净流入来自东财概念板块行情</dd></div><div><dt>隔天溢价率</dt><dd>涨停日收盘对收盘，腾讯/新浪前复权日 K 线；次日未收盘显示 --</dd></div><div><dt>百日新高</dt><dd>Wind 全市场筛选，含行业归属</dd></div><div><dt>免责声明</dt><dd>仅为数据整理，不构成投资建议</dd></div></dl></div><footer><button>知道了</button></footer></form></dialog>
+    <script src="static-shim.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
