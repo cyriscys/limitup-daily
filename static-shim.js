@@ -25,6 +25,9 @@
     var m;
     if (/^\/api\/limitup-dataset/.test(u)) return realFetch("data/limitup-dataset.json", opt);
     if (/^\/api\/sector-momentum/.test(u)) return realFetch("data/sector-momentum.json", opt);
+    if ((m = u.match(/^\/api\/capital-flow(?:\?type=(\w+))?/))) {
+      return realFetch("data/capital-flow-" + (m[1] === "concept" ? "concept" : "industry") + ".json", opt);
+    }
     if ((m = u.match(/^\/api\/sector-detail\?name=([^&]+)/))) {
       return realFetch("data/sector-details.json", opt).then(function (r) {
         return r.json();
