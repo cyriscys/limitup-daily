@@ -478,3 +478,35 @@ body.view-sector .daily-summary { display: none; }
 .drawer-rename { padding: 5px 14px; font-size: 12px; border: 1px solid rgba(0,113,227,.35); border-radius: 999px; background: #fff; color: #0071e3; cursor: pointer; }
 .drawer-rename:hover { background: rgba(0,113,227,.08); }
 .static-mode .drawer-rename { display: none; }
+
+/* ===== 板块资金流向 ===== */
+body.view-flow .signal-rail,
+body.view-flow .board-meta .board-tools,
+body.view-flow .board-meta .legend,
+body.view-flow .daily-summary { display: none; }
+
+.flow-panel { background: #fff; border-radius: 24px; padding: 26px 28px; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
+.flow-toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.flow-toggle { display: inline-flex; background: #f5f5f7; border-radius: 999px; padding: 3px; }
+.flow-toggle button { border: 0; background: transparent; padding: 6px 16px; border-radius: 999px; font-size: 12.5px; color: #6e6e73; cursor: pointer; }
+.flow-toggle button.is-active { background: #fff; color: #1d1d1f; font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+.flow-note { font-size: 12px; color: #86868b; }
+.flow-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.flow-col { background: #f5f5f7; border-radius: 16px; padding: 14px 16px; }
+.flow-col header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.flow-col header strong { font-size: 14px; color: #1d1d1f; }
+.flow-col header span { font-size: 11px; color: #86868b; }
+.flow-row { display: grid; grid-template-columns: 26px minmax(72px, 110px) 1fr 74px 56px; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(0,0,0,.05); font-size: 12.5px; }
+.flow-row:last-child { border-bottom: 0; }
+.flow-rank { color: #c7c7cc; font-weight: 700; font-size: 11px; }
+.flow-name { color: #1d1d1f; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flow-bar { height: 8px; background: rgba(0,0,0,.05); border-radius: 4px; overflow: hidden; }
+.flow-bar i { display: block; height: 100%; border-radius: 4px; }
+.flow-bar i.in { background: linear-gradient(90deg, #ff9f92, #e5453c); }
+.flow-bar i.out { background: linear-gradient(90deg, #7ed8a7, #12a05c); }
+.flow-net { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.flow-pct { text-align: right; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .flow-columns { grid-template-columns: 1fr; }
+  .flow-row { grid-template-columns: 22px minmax(64px, 90px) 1fr 66px 50px; }
+}
