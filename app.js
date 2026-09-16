@@ -192,6 +192,27 @@ function stockRow(s, i, bucketName) {
   return `<div class="stock-row real is-clickable" data-code="${esc(s.code)}" data-name="${esc(s.name)}" title="${tip}"><span><strong>${i + 1}. ${esc(s.name)}</strong><small>${esc(s.code)} · ${esc(s.tag)}${s.zbc ? ` · 炸板${s.zbc}次` : ""}${s.theme ? ` · <em class="stock-theme">${esc(s.theme)}</em>` : ""}${reason ? ` · ${reason}` : ""}${s.manual ? ` · <em class="stock-manual">手动</em>` : ""}</small></span><span class="stock-amounts">${fmtYi(s.amount)}亿 · 封单${fmtYi(s.fund)}亿<button class="stock-move" data-code="${esc(s.code)}" data-name="${esc(s.name)}" data-bucket="${esc(bucketName || "")}" title="手动调整板块">调</button></span></div>`;
 }
 
+async function postAdmin(url, payload) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const headers = { "Content-Type": "application/json" };
+    const token = localStorage.getItem("adminToken") || "";
+    if (token) headers["X-Admin-Token"] = token;
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(payload) });
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401 && data.needAuth) {
+      localStorage.removeItem("adminToken");
+      if (attempt === 1) throw new Error("管理密码不正确");
+      const input = prompt("只有站长可以修改板块，请输入管理密码：");
+      if (input === null || !input.trim()) throw new Error("已取消");
+      localStorage.setItem("adminToken", input.trim());
+      continue;
+    }
+    if (!response.ok || !data.ok) throw new Error(data.notice || "保存失败");
+    return data;
+  }
+  throw new Error("管理密码不正确");
+}
+
 async function moveStock(button) {
   const code = button.dataset.code, name = button.dataset.name;
   const current = button.dataset.bucket || "";
@@ -200,13 +221,7 @@ async function moveStock(button) {
   const sector = input.trim() === "恢复" ? "" : input.trim();
   if (!sector && input.trim() !== "恢复") return;
   try {
-    const response = await fetch("/api/sector-override", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, sector }),
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.notice || "保存失败");
+    await postAdmin("/api/sector-override", { code, sector });
     showToast(sector ? `${name} → ${sector}，重新计算中…` : `${name} 已恢复自动判定，重新计算中…`);
     await loadDataset(state.endDate, { silent: true });
     // 重新打开该股票当前所在的板块弹窗
@@ -232,13 +247,7 @@ async function renameSector() {
   if (!newName && trimmed !== "恢复") return;
   if (newName === oldName) return;
   try {
-    const response = await fetch("/api/sector-rename", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ old: oldName, new: newName }),
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.notice || "改名失败");
+    await postAdmin("/api/sector-rename", { old: oldName, new: newName });
     showToast(newName ? `${oldName} → ${newName}，重新计算中…` : `${oldName} 已恢复原名，重新计算中…`);
     closeDrawer();
     await loadDataset(state.endDate, { silent: true });
