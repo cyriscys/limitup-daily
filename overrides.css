@@ -472,3 +472,9 @@ body.view-sector .daily-summary { display: none; }
   .ladder-3col { grid-template-columns: 1fr; }
   .momentum-cards { grid-template-columns: 1fr; }
 }
+
+/* ===== 板块改名按钮 ===== */
+.drawer-head-actions { display: flex; gap: 8px; align-items: center; }
+.drawer-rename { padding: 5px 14px; font-size: 12px; border: 1px solid rgba(0,113,227,.35); border-radius: 999px; background: #fff; color: #0071e3; cursor: pointer; }
+.drawer-rename:hover { background: rgba(0,113,227,.08); }
+.static-mode .drawer-rename { display: none; }
