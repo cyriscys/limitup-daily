@@ -25,6 +25,15 @@
     var m;
     if (/^\/api\/limitup-dataset/.test(u)) return realFetch("data/limitup-dataset.json", opt);
     if (/^\/api\/sector-momentum/.test(u)) return realFetch("data/sector-momentum.json", opt);
+    if ((m = u.match(/^\/api\/capital-flow-history\?.*?\bcode=([A-Za-z0-9]+)/))) {
+      return realFetch("data/capital-flow-history.json", opt).then(function (r) {
+        return r.json();
+      }).then(function (payload) {
+        var h = payload && payload.history && payload.history[m[1].toUpperCase()];
+        if (h) return respond(h, 200);
+        return respond({ ok: false, notice: "静态版暂无该板块资金流历史" }, 404);
+      });
+    }
     if ((m = u.match(/^\/api\/capital-flow(?:\?type=(\w+))?/))) {
       return realFetch("data/capital-flow-" + (m[1] === "concept" ? "concept" : "industry") + ".json", opt);
     }
