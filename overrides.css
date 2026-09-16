@@ -496,7 +496,9 @@ body.view-flow .daily-summary { display: none; }
 .flow-col header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
 .flow-col header strong { font-size: 14px; color: #1d1d1f; }
 .flow-col header span { font-size: 11px; color: #86868b; }
-.flow-row { display: grid; grid-template-columns: 26px minmax(72px, 110px) 1fr 74px 56px; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid rgba(0,0,0,.05); font-size: 12.5px; }
+.flow-row { display: grid; grid-template-columns: 26px minmax(72px, 110px) 1fr 74px 56px; align-items: center; gap: 8px; padding: 7px 6px; border: 0; background: transparent; width: 100%; text-align: left; font: inherit; border-bottom: 1px solid rgba(0,0,0,.05); font-size: 12.5px; cursor: pointer; border-radius: 8px; transition: background .15s ease; }
+.flow-row:hover { background: rgba(0,0,0,.04); }
+.flow-row:active { transform: scale(.995); }
 .flow-row:last-child { border-bottom: 0; }
 .flow-rank { color: #c7c7cc; font-weight: 700; font-size: 11px; }
 .flow-name { color: #1d1d1f; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -510,3 +512,14 @@ body.view-flow .daily-summary { display: none; }
   .flow-columns { grid-template-columns: 1fr; }
   .flow-row { grid-template-columns: 22px minmax(64px, 90px) 1fr 66px 50px; }
 }
+/* 资金流 5 日趋势弹窗 */
+.flowhist { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; }
+.flowhist-row { display: grid; grid-template-columns: 84px 1fr 92px; align-items: center; gap: 12px; padding: 8px 4px; border-bottom: 1px solid rgba(0,0,0,.05); }
+.flowhist-row:last-child { border-bottom: 0; }
+.flowhist-date { font-size: 12.5px; color: #1d1d1f; font-weight: 600; font-variant-numeric: tabular-nums; }
+.flowhist-date i { font-style: normal; font-size: 10px; color: #ff9f0a; background: rgba(255,159,10,.12); border-radius: 4px; padding: 1px 5px; margin-left: 5px; vertical-align: 1px; }
+.flowhist-track { height: 14px; background: rgba(0,0,0,.045); border-radius: 7px; overflow: hidden; }
+.flowhist-track i { display: block; height: 100%; border-radius: 7px; }
+.flowhist-track i.up { background: linear-gradient(90deg, #ff9f92, #e5453c); }
+.flowhist-track i.down { background: linear-gradient(90deg, #7ed8a7, #12a05c); }
+.flowhist-net { text-align: right; font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
