@@ -20,6 +20,8 @@ const state = {
   marketData: null,
   forwardCache: {},
   sectorMomentum: null,
+  flowCache: {},
+  flowType: "industry",
   sentiment: null,
 };
 
@@ -348,38 +350,38 @@ async function loadSectorMomentum(force) {
   return data;
 }
 
-async function renderSectorMomentum() {
-  const board = $("#board");
-  $("#board-title").textContent = "TOP 板块情绪周期";
-  $("#board-eyebrow").textContent = "SECTOR MOMENTUM · 近 5 日最强主线";
-  if (!state.sectorMomentum) board.innerHTML = `<p class="empty-lane board-loading">正在计算板块强度与梯队（首次约需 1-2 分钟，抓取真实 K 线）……</p>`;
-  let data;
+function momentumCardsHTML(data) {
+  return (data.sectors || []).map((s, i) => {
+    const color = s.phaseColor || "#868e96";
+    return `<button class="momentum-card" data-name="${esc(s.name)}" style="--phase:${color}">
+      <span class="momentum-rank">${String(i + 1).padStart(2, "0")}</span>
+      <span class="momentum-phase" style="background:${color}1a;color:${color};border-color:${color}55">${esc(s.phase)}</span>
+      <strong class="momentum-name">${esc(s.name)}</strong>
+      <span class="momentum-score">强度 ${s.score}</span>
+      ${sparklineSVG(s.dailyTrend || [], color)}
+      <span class="momentum-metrics"><span>5日 <b>${s.totalLimitup}</b> 家</span><span>最高 <b>${s.maxLbc}</b> 板</span><span>晋级 <b>${s.avgPromotion == null ? "--" : s.avgPromotion + "%"}</b></span><span>炸板 <b>${s.breakRate == null ? "--" : s.breakRate + "%"}</b></span></span>
+    </button>`;
+  }).join("");
+}
+
+async function renderMomentumInto(panel) {
+  const sec = document.createElement("div");
+  sec.className = "sentiment-section momentum-section";
+  sec.innerHTML = `<h3>TOP 板块情绪周期 · 近 5 日最强主线</h3><p class="empty-lane board-loading">正在计算板块强度与梯队……</p>`;
+  panel.appendChild(sec);
   try {
-    data = await loadSectorMomentum();
+    const data = await loadSectorMomentum();
+    if (state.view !== "sentiment") return;
+    const mc = data.marketContext || {};
+    sec.innerHTML = `<h3>TOP 板块情绪周期 · 近 5 日最强主线</h3>
+      <p class="momentum-context">近 5 日日均涨停 ${mc.avgLimitup ?? "--"} 家 · 全场最高 ${mc.maxLadder ?? "--"} 板${mc.maxLadderName ? `（${esc(mc.maxLadderName)}）` : ""}${data.isIntraday ? " · 盘中数据，收盘后复核" : ""}</p>
+      <div class="momentum-cards">${momentumCardsHTML(data)}</div>
+      <p class="analysis-foot-note">强度分 = 家数规模 30 + 高度 25 + 持续性 15 + 晋级率 15 + 隔日溢价 15（板块间 0-100 归一加权）；点开卡片看梯队与周期判定依据 · 生成于 ${esc(data.generatedAt || "")}</p>`;
+    sec.querySelectorAll(".momentum-card").forEach(card => card.addEventListener("click", () => openSectorDetail(card.dataset.name)));
   } catch (error) {
-    if (state.view !== "sector") return;
-    board.innerHTML = `<p class="empty-lane board-loading">${esc(error.message)}<br>点击「刷新行情」重试；不会用演示数据冒充。</p>`;
-    return;
+    if (state.view !== "sentiment") return;
+    sec.innerHTML = `<h3>TOP 板块情绪周期 · 近 5 日最强主线</h3><p class="empty-lane board-loading">${esc(error.message)}</p>`;
   }
-  if (state.view !== "sector") return;
-  const mc = data.marketContext || {};
-  const ctx = `近 5 日日均涨停 ${mc.avgLimitup ?? "--"} 家 · 全场最高 ${mc.maxLadder ?? "--"} 板${mc.maxLadderName ? `（${esc(mc.maxLadderName)}）` : ""}${data.isIntraday ? " · 盘中数据，收盘后复核" : ""}`;
-  board.innerHTML = `<div class="momentum-panel">
-    <p class="momentum-context">${ctx}</p>
-    <div class="momentum-cards">${(data.sectors || []).map((s, i) => {
-      const color = s.phaseColor || "#868e96";
-      return `<button class="momentum-card" data-name="${esc(s.name)}" style="--phase:${color}">
-        <span class="momentum-rank">${String(i + 1).padStart(2, "0")}</span>
-        <span class="momentum-phase" style="background:${color}1a;color:${color};border-color:${color}55">${esc(s.phase)}</span>
-        <strong class="momentum-name">${esc(s.name)}</strong>
-        <span class="momentum-score">强度 ${s.score}</span>
-        ${sparklineSVG(s.dailyTrend || [], color)}
-        <span class="momentum-metrics"><span>5日 <b>${s.totalLimitup}</b> 家</span><span>最高 <b>${s.maxLbc}</b> 板</span><span>晋级 <b>${s.avgPromotion == null ? "--" : s.avgPromotion + "%"}</b></span><span>炸板 <b>${s.breakRate == null ? "--" : s.breakRate + "%"}</b></span></span>
-      </button>`;
-    }).join("")}</div>
-    <p class="analysis-foot-note">强度分 = 家数规模 30 + 高度 25 + 持续性 15 + 晋级率 15 + 隔日溢价 15（板块间 0-100 归一加权）；点开卡片看梯队与周期判定依据 · 生成于 ${esc(data.generatedAt || "")}</p>
-  </div>`;
-  $$(".momentum-card").forEach(card => card.addEventListener("click", () => openSectorDetail(card.dataset.name)));
 }
 
 function ladderGroup(title, stocks, note) {
@@ -420,6 +422,57 @@ async function openSectorDetail(name) {
   } catch (error) {
     dialogFrame("SECTOR CYCLE", `${esc(name)} · 情绪周期`, "", `<p class="empty-lane board-loading">${esc(error.message)}</p>`);
   }
+}
+
+// ---------- 板块资金流向 ----------
+async function loadCapitalFlow(type, force) {
+  const key = type || "industry";
+  if (state.flowCache[key] && !force) return state.flowCache[key];
+  const response = await fetch(`/api/capital-flow?type=${key}`, { cache: "no-store" });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(data.notice || "资金流向暂不可用");
+  state.flowCache[key] = data;
+  return data;
+}
+
+function flowRow(item, i, maxAbs, dir) {
+  const w = Math.max(6, Math.round(Math.abs(item.netInflow) / maxAbs * 100));
+  const net = `${item.netInflow > 0 ? "+" : ""}${item.netInflow} 亿`;
+  return `<div class="flow-row"><span class="flow-rank">${String(i + 1).padStart(2, "0")}</span><span class="flow-name">${esc(item.name)}</span><span class="flow-bar"><i class="${dir}" style="width:${w}%"></i></span><span class="flow-net ${dir === "in" ? "up" : "down"}">${net}</span><span class="flow-pct ${item.pct >= 0 ? "up" : "down"}">${item.pct > 0 ? "+" : ""}${item.pct}%</span></div>`;
+}
+
+async function renderCapitalFlow() {
+  const board = $("#board");
+  $("#board-title").textContent = "板块资金流向";
+  $("#board-eyebrow").textContent = "CAPITAL FLOW · 主力净流入排行";
+  const key = state.flowType;
+  if (!state.flowCache[key]) board.innerHTML = `<p class="empty-lane board-loading">正在读取板块资金流向……</p>`;
+  let data;
+  try {
+    data = await loadCapitalFlow(key);
+  } catch (error) {
+    if (state.view !== "flow") return;
+    board.innerHTML = `<p class="empty-lane board-loading">${esc(error.message)}<br>点击「刷新行情」重试。</p>`;
+    return;
+  }
+  if (state.view !== "flow") return;
+  const all = [...(data.inflows || []), ...(data.outflows || [])];
+  const maxAbs = Math.max(...all.map(x => Math.abs(x.netInflow)), 1);
+  board.innerHTML = `<div class="flow-panel">
+    <div class="flow-toolbar">
+      <div class="flow-toggle">${[["industry", "行业板块"], ["concept", "概念板块"]].map(([v, label]) => `<button class="${key === v ? "is-active" : ""}" data-flow-type="${v}">${label}</button>`).join("")}</div>
+      <span class="flow-note">${esc(data.boardLabel)} · 主力净流入 = 超大单 + 大单净额${data.isIntraday ? " · 盘中延时数据" : " · 收盘数据"}</span>
+    </div>
+    <div class="flow-columns">
+      <section class="flow-col"><header><strong>资金流入 Top 10</strong><span>主力净流入</span></header>${(data.inflows || []).map((x, i) => flowRow(x, i, maxAbs, "in")).join("")}</section>
+      <section class="flow-col"><header><strong>资金流出 Top 10</strong><span>主力净流出</span></header>${(data.outflows || []).map((x, i) => flowRow(x, i, maxAbs, "out")).join("")}</section>
+    </div>
+    <p class="analysis-foot-note">${esc(data.source)} · 更新于 ${esc(data.fetchedAt)} · 不构成投资建议</p>
+  </div>`;
+  $$("[data-flow-type]").forEach(b => b.addEventListener("click", () => {
+    state.flowType = b.dataset.flowType;
+    renderCapitalFlow();
+  }));
 }
 
 // ---------- 指数行情条 ----------
@@ -650,6 +703,8 @@ async function renderSentiment() {
       <div class="sentiment-section"><h3>五阶段判定标准</h3><div class="stage-list">${stageList}</div></div>
       <p class="analysis-foot-note">${esc(data.rules.formula)}<br>涨停 ${esc(data.rules.zt)}；高度 ${esc(data.rules.height)}；溢价 ${esc(data.rules.premium)}；炸板率 ${esc(data.rules.broken)}；跌停 ${esc(data.rules.downLimit)}。<br>${esc(data.source)} · 不构成投资建议</p>
     </div>`;
+  const panel = board.querySelector(".sentiment-panel");
+  if (panel) renderMomentumInto(panel);
 }
 
 async function loadSentiment(force) {
@@ -667,9 +722,9 @@ $$(".view-tab").forEach(b => b.addEventListener("click", () => {
   $$(".view-tab").forEach(x => x.classList.toggle("is-active", x === b));
   closeDrawer();
   document.body.classList.toggle("view-sentiment", state.view === "sentiment");
-  document.body.classList.toggle("view-sector", state.view === "sector");
+  document.body.classList.toggle("view-flow", state.view === "flow");
   history.replaceState(null, "", state.view === "limit" ? location.pathname + location.search : `#${state.view}`);
-  if (state.view === "sector") renderSectorMomentum();
+  if (state.view === "flow") renderCapitalFlow();
   else if (state.view === "sentiment") renderSentiment();
   else renderBoard();
 }));
@@ -678,12 +733,17 @@ $("#strict-filter").addEventListener("change", e => { state.strict = e.target.ch
 $("#heat-filter").addEventListener("change", e => { state.showBreak = e.target.checked; if (state.selected) openDrawer(state.selected.dayIndex, state.selected.sectorName); showToast(state.showBreak ? "板块详情将显示真实炸板记录" : "人气炸板已隐藏"); });
 $("#sort-button").addEventListener("click", e => { state.sort = state.sort === "count" ? "ladder" : "count"; e.currentTarget.textContent = state.sort === "count" ? "家数优先" : "高度优先"; renderBoard(); });
 $("#refresh-button").addEventListener("click", async () => {
-  if (state.view === "sentiment") {
-    try { await loadSentiment(true); renderSentiment(); showToast("情绪温度已刷新"); } catch (e2) { showToast(e2.message); }
+  if (state.view === "flow") {
+    try { await loadCapitalFlow(state.flowType, true); renderCapitalFlow(); showToast("资金流向已刷新"); } catch (e2) { showToast(e2.message); }
     return;
   }
-  if (state.view === "sector") {
-    try { await loadSectorMomentum(true); renderSectorMomentum(); showToast("板块情绪已刷新"); } catch (e2) { showToast(e2.message); }
+  if (state.view === "sentiment") {
+    try {
+      await loadSentiment(true);
+      renderSentiment();
+      loadSectorMomentum(true).then(() => { if (state.view === "sentiment") renderSentiment(); });
+      showToast("情绪温度已刷新");
+    } catch (e2) { showToast(e2.message); }
     return;
   }
   try { await loadDataset(state.endDate, { silent: true }); showToast("涨停池已刷新"); } catch (e2) { showToast(e2.message); } loadMarket(true);
@@ -721,11 +781,12 @@ $("#sort-button").textContent = "家数优先";
   }
   loadMarket();
   setInterval(loadMarket, 15000);
-  // 支持 #sentiment / #sector / #sector:板块名 直达对应页签或板块详情（可分享）
+  // 支持 #sentiment / #flow / #sector:板块名 直达（#sector 并入市场情绪页，可分享）
   const target = location.hash.replace("#", "");
   const [viewName, viewArg] = target.split(":");
-  if (["sentiment", "sector"].includes(viewName)) {
-    const tab = document.querySelector(`[data-view="${viewName}"]`);
+  const aliased = viewName === "sector" ? "sentiment" : viewName;
+  if (["sentiment", "flow"].includes(aliased)) {
+    const tab = document.querySelector(`[data-view="${aliased}"]`);
     if (tab) tab.click();
     if (viewName === "sector" && viewArg) openSectorDetail(decodeURIComponent(viewArg));
   }
