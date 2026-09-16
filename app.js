@@ -219,6 +219,35 @@ async function moveStock(button) {
   }
 }
 
+async function renameSector() {
+  if (!state.selected) return;
+  const oldName = state.selected.sectorName;
+  const dayIndex = state.selected.dayIndex;
+  const input = prompt(`把板块「${oldName}」改名为：\n（所有历史与未来交易日统一生效；输入"恢复"清除改名映射）`, oldName);
+  if (input === null) return;
+  const trimmed = input.trim();
+  const newName = trimmed === "恢复" ? "" : trimmed;
+  if (!newName && trimmed !== "恢复") return;
+  if (newName === oldName) return;
+  try {
+    const response = await fetch("/api/sector-rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ old: oldName, new: newName }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.notice || "改名失败");
+    showToast(newName ? `${oldName} → ${newName}，重新计算中…` : `${oldName} 已恢复原名，重新计算中…`);
+    closeDrawer();
+    await loadDataset(state.endDate, { silent: true });
+    const day = boardDays()[dayIndex];
+    const targetName = newName || oldName;
+    if (day && day.sectors.some(s => s.name === targetName)) openDrawer(dayIndex, targetName);
+  } catch (err) {
+    showToast(err.message || "改名失败");
+  }
+}
+
 function closeDrawer() {
   $("#detail-drawer").classList.remove("is-open");
   $("#detail-drawer").setAttribute("aria-hidden", "true");
@@ -673,6 +702,7 @@ $("#history-date").addEventListener("change", e => {
 });
 $("#premium-days").addEventListener("change", e => { state.premiumDays = Number(e.target.value); showToast(`溢价周期已切换为 ${state.premiumDays} 日`); });
 $("#drawer-close").addEventListener("click", closeDrawer);
+$("#drawer-rename").addEventListener("click", renameSector);
 $("#drawer-backdrop").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
 $("#analysis-close").addEventListener("click", () => $("#analysis-dialog").close());
