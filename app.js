@@ -438,7 +438,37 @@ async function loadCapitalFlow(type, force) {
 function flowRow(item, i, maxAbs, dir) {
   const w = Math.max(6, Math.round(Math.abs(item.netInflow) / maxAbs * 100));
   const net = `${item.netInflow > 0 ? "+" : ""}${item.netInflow} 亿`;
-  return `<div class="flow-row"><span class="flow-rank">${String(i + 1).padStart(2, "0")}</span><span class="flow-name">${esc(item.name)}</span><span class="flow-bar"><i class="${dir}" style="width:${w}%"></i></span><span class="flow-net ${dir === "in" ? "up" : "down"}">${net}</span><span class="flow-pct ${item.pct >= 0 ? "up" : "down"}">${item.pct > 0 ? "+" : ""}${item.pct}%</span></div>`;
+  return `<button class="flow-row" data-code="${esc(item.code)}" data-name="${esc(item.name)}" title="点击查看近 5 日资金流向趋势"><span class="flow-rank">${String(i + 1).padStart(2, "0")}</span><span class="flow-name">${esc(item.name)}</span><span class="flow-bar"><i class="${dir}" style="width:${w}%"></i></span><span class="flow-net ${dir === "in" ? "up" : "down"}">${net}</span><span class="flow-pct ${item.pct >= 0 ? "up" : "down"}">${item.pct > 0 ? "+" : ""}${item.pct}%</span></button>`;
+}
+
+async function openFlowDetail(code, name) {
+  dialogFrame("CAPITAL FLOW", `${esc(name)} · 资金流向`, "正在读取近 5 日资金流向……", `<p class="empty-lane board-loading">正在读取资金流历史……</p>`);
+  try {
+    const response = await fetch(`/api/capital-flow-history?code=${encodeURIComponent(code)}&type=${state.flowType}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.notice || "资金流历史暂不可用");
+    const days = data.days || [];
+    if (!days.length) throw new Error("暂无资金流历史数据");
+    const maxAbs = Math.max(...days.map(d => Math.abs(d.main)), 0.01);
+    const inDays = days.filter(d => d.main > 0).length;
+    const bars = days.map(d => {
+      const w = Math.max(4, Math.round(Math.abs(d.main) / maxAbs * 100));
+      const cls = d.main >= 0 ? "up" : "down";
+      return `<div class="flowhist-row"><span class="flowhist-date">${esc(String(d.date).slice(5))}${d.intraday ? "<i>盘中</i>" : ""}</span><span class="flowhist-track"><i class="${cls}" style="width:${w}%"></i></span><span class="flowhist-net ${cls}">${d.main > 0 ? "+" : ""}${d.main} 亿</span></div>`;
+    }).join("");
+    const total = Number(data.total ?? days.reduce((s, d) => s + d.main, 0));
+    const html = `
+      <div class="analysis-summary">
+        <div><span>近 ${days.length} 日累计</span><strong class="${total >= 0 ? "up" : "down"}">${total > 0 ? "+" : ""}${total.toFixed(2)} 亿</strong></div>
+        <div><span>净流入天数</span><strong>${inDays} / ${days.length}</strong></div>
+        <div><span>口径</span><strong>${esc(state.flowType === "concept" ? "概念板块" : "行业板块")}</strong></div>
+      </div>
+      <div class="flowhist">${bars}</div>
+      <p class="analysis-foot-note">${esc(data.source || "主力净流入 = 超大单 + 大单净额")} · ${days.some(d => d.intraday) ? "末位为当日盘中延时值，收盘后复核 · " : ""}不构成投资建议</p>`;
+    dialogFrame("CAPITAL FLOW", `${esc(data.name || name)} · 资金流向`, `近 ${days.length} 个交易日 · 更新于 ${esc(data.fetchedAt || "")}`, html);
+  } catch (error) {
+    dialogFrame("CAPITAL FLOW", `${esc(name)} · 资金流向`, "", `<p class="empty-lane board-loading">${esc(error.message)}</p>`);
+  }
 }
 
 async function renderCapitalFlow() {
@@ -473,6 +503,7 @@ async function renderCapitalFlow() {
     state.flowType = b.dataset.flowType;
     renderCapitalFlow();
   }));
+  $$("#board .flow-row").forEach(b => b.addEventListener("click", () => openFlowDetail(b.dataset.code, b.dataset.name)));
 }
 
 // ---------- 指数行情条 ----------
