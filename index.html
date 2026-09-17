@@ -7,7 +7,7 @@
     <meta name="description" content="交易脉冲——多交易日板块节奏与可解释预测工作台" />
     <title>交易脉冲 · 多日板块节奏</title>
     <link rel="stylesheet" href="styles.css?v=2" />
-    <link rel="stylesheet" href="overrides.css?v=6" />
+    <link rel="stylesheet" href="overrides.css?v=7" />
   </head>
   <body>
     <a class="skip-link" href="#board">跳到看板</a>
@@ -48,15 +48,15 @@
       <header class="drawer-head"><div><p id="drawer-date">-- / --</p><h2 id="drawer-title">板块</h2></div><div class="drawer-head-actions"><button id="drawer-rename" class="drawer-rename" title="人工修改板块名（历史与未来交易日统一生效）">改名</button><button id="drawer-close" aria-label="关闭详情">关闭</button></div></header>
       <div class="drawer-body">
         <section class="drawer-section"><div class="section-heading"><h3>板块内股票</h3><span id="drawer-stock-count" class="section-note">-- 家涨停</span></div><div id="drawer-stocks" class="stock-list"></div></section>
-        <section class="drawer-section"><div class="section-heading"><h3>最近三天涨停 · 隔天溢价率</h3><span class="section-note">收盘对收盘</span></div><div id="premium-3d" class="premium-3d"></div></section>
-        <section class="drawer-section"><div class="section-heading"><h3>近7日涨停数量趋势</h3></div><div id="trend-chart" class="trend-chart"></div></section>
+        <section class="drawer-section"><div class="section-heading"><h3>最近三天涨停 · 隔天溢价率</h3><span class="section-note">收盘对收盘 · 最新在前</span></div><div id="premium-3d" class="premium-3d"></div></section>
+        <section class="drawer-section"><div class="section-heading"><h3>近 5 日板块统计</h3><span class="section-note">与情绪页口径一致</span></div><div id="trend-table" class="trend-table-wrap"></div></section>
       </div>
       <footer class="drawer-foot"><span>真实涨停池 · 非投资建议</span><button id="model-card-button">数据口径</button></footer>
     </aside>
     <dialog id="analysis-dialog" class="analysis-dialog"><div class="analysis-shell"><header><div><p id="analysis-kicker">DATE ANALYSIS</p><h2 id="analysis-title">日期分析</h2><small id="analysis-subtitle">历史演示数据</small></div><button id="analysis-close" aria-label="关闭分析">关闭</button></header><div id="analysis-body" class="analysis-body"></div><footer><span>样本口径 · 不构成投资建议</span><button id="analysis-done">完成查看</button></footer></div></dialog>
-    <dialog id="stock-dialog" class="stock-dialog"><div class="analysis-shell"><header><div><p>STOCK CHART</p><h2 id="stock-chart-title">个股</h2><small id="stock-chart-sub">读取行情中……</small></div><button id="stock-chart-close" aria-label="关闭图表">关闭</button></header><div class="stock-chart-body"><section><h3>当日分时</h3><canvas id="minute-chart"></canvas></section><section><h3>日 K · 近 60 交易日（前复权）</h3><canvas id="kline-chart"></canvas></section><p class="analysis-foot-note" id="stock-chart-note"></p></div></div></dialog>
+    <dialog id="stock-dialog" class="stock-dialog"><div class="analysis-shell"><header><div><p>STOCK CHART</p><h2 id="stock-chart-title">个股</h2><small id="stock-chart-sub">读取行情中……</small></div><button id="stock-chart-close" aria-label="关闭图表">关闭</button></header><div class="stock-chart-body"><section><h3>当日分时</h3><canvas id="minute-chart"></canvas></section><section><h3>日 K · 近 60 交易日（前复权）</h3><canvas id="kline-chart"></canvas></section><section><h3>近 5 日涨停动能</h3><div id="stock-limitup-hist" class="limit-hist"></div></section><p class="analysis-foot-note" id="stock-chart-note"></p></div></div></dialog>
     <dialog id="method-dialog"><form method="dialog"><header><div><p>DATA CARD</p><h2>数据口径</h2></div><button aria-label="关闭">关闭</button></header><div class="dialog-content"><p>本页全部数据来自真实公开源，不用演示数据冒充：</p><dl><div><dt>涨停/炸板名单</dt><dd>东方财富涨停池、炸板池公开端点，支持历史交易日</dd></div><div><dt>题材概念</dt><dd>东方财富 F10 核心题材中的精准概念（一只股可属多个题材，无概念时回退行业）；板块涨幅与主力净流入来自东财概念板块行情</dd></div><div><dt>隔天溢价率</dt><dd>涨停日收盘对收盘，腾讯/新浪前复权日 K 线；次日未收盘显示 --</dd></div><div><dt>板块情绪周期</dt><dd>近 5 日最强 Top5 板块：强度分（家数/高度/持续性/晋级率/溢价加权）+ 梯队（龙头/中军/新兵）+ 六阶段量化判定，规则命中逐条回显</dd></div><div><dt>板块资金流向</dt><dd>东方财富板块主力净流入排行（超大单+大单净额，延时公开行情），行业/概念两套口径各取流入流出前 10</dd></div><div><dt>免责声明</dt><dd>仅为数据整理，不构成投资建议</dd></div></dl></div><footer><button>知道了</button></footer></form></dialog>
     <script src="static-shim.js?v=6"></script>
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=9"></script>
   </body>
 </html>
