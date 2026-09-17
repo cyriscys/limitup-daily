@@ -523,3 +523,33 @@ body.view-flow .daily-summary { display: none; }
 .flowhist-track i.up { background: linear-gradient(90deg, #ff9f92, #e5453c); }
 .flowhist-track i.down { background: linear-gradient(90deg, #7ed8a7, #12a05c); }
 .flowhist-net { text-align: right; font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* 板块弹窗：三天溢价均值 + 近5日统计表 */
+.premium-avg { font: 600 12px var(--mono); color: var(--muted); }
+.premium-avg.up { color: var(--up); }
+.premium-avg.down { color: var(--down); }
+.trend-table-wrap .data-table { margin-top: 4px; }
+.trend-table-wrap .prem-cell.up { color: var(--up); }
+.trend-table-wrap .prem-cell.down { color: var(--down); }
+
+/* 个股弹窗：近 5 日涨停动能 */
+.limit-hist { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 4px; }
+.lh-block h4 { font-size: 13px; color: var(--text); margin: 0 0 10px; display: flex; align-items: baseline; gap: 8px; }
+.lh-block h4 small { font-size: 10.5px; color: var(--muted); font-weight: 400; }
+.lh-row { display: grid; grid-template-columns: 46px 1fr 58px; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,.05); }
+.lh-row:last-child { border-bottom: 0; }
+.lh-date { font: 600 11.5px var(--mono); color: var(--text); }
+.lh-track { height: 10px; background: rgba(0,0,0,.045); border-radius: 5px; overflow: hidden; }
+.lh-seal { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #ffb3ab, #e5453c); }
+.lh-seal.early { background: linear-gradient(90deg, #e5453c, #c22e26); }
+.lh-none { display: block; height: 100%; width: 3%; background: rgba(0,0,0,.12); border-radius: 5px; }
+.lh-val { text-align: right; font: 600 12px var(--mono); color: var(--text); }
+.lh-val.is-muted { color: var(--muted); font-weight: 400; }
+.lh-bars { display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; gap: 8px; height: 130px; padding: 12px 10px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+.lh-col { display: flex; flex-direction: column; align-items: center; justify-content: end; gap: 5px; height: 100%; }
+.lh-col b { color: var(--text); font: 600 10.5px var(--mono); }
+.lh-col i { width: 100%; max-width: 40px; border-radius: 6px 6px 3px 3px; background: rgba(229,69,60,.35); }
+.lh-col.latest i { background: #e5453c; }
+.lh-col.is-muted b, .lh-col.is-muted span { color: var(--muted); }
+.lh-col.is-muted i { background: rgba(0,0,0,.1); }
+.lh-col span { color: var(--muted); font: 8.5px var(--mono); }
+@media (max-width: 720px) { .limit-hist { grid-template-columns: 1fr; } }
