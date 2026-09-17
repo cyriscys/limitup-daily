@@ -147,37 +147,86 @@ function openDrawer(dayIndex, sectorName) {
   $$("#drawer-stocks .stock-row.is-clickable").forEach(row => row.addEventListener("click", () => openStockChart(row.dataset.code, row.dataset.name)));
   $$("#drawer-stocks .stock-move").forEach(button => button.addEventListener("click", e => { e.stopPropagation(); moveStock(button); }));
 
-  // 最近三天涨停的隔天溢价率（所选日及其前两个交易日）
+  // 最近三天涨停的隔天溢价率（所选日及其前两个交易日，最新在前）
   const allDays = state.dataset.days;
-  const upto = allDays.filter(d => d.date <= day.date).slice(-3);
+  const upto = allDays.filter(d => d.date <= day.date).slice(-3).reverse();
   $("#premium-3d").innerHTML = upto.map(d => {
     const sec = matchSector(d);
     const rows = sec ? sec.stocks.map(s => `<div class="premium-row" data-code="${esc(s.code)}" data-date="${d.date}"><span><b>${esc(s.name)}</b><small>${esc(s.tag)}</small></span><em class="premium-value">…</em></div>`).join("") : `<p class="stair-empty">当日无涨停</p>`;
-    return `<div class="premium-day"><header>${fmtDate(d.date)} ${d.weekday}<span>${sec ? sec.count + " 家" : ""}</span></header>${rows}</div>`;
+    return `<div class="premium-day"><header>${fmtDate(d.date)} ${d.weekday}<span class="premium-avg" data-date="${d.date}">…</span></header>${rows}</div>`;
   }).join("");
   upto.forEach(d => {
+    const sec = matchSector(d);
     loadForward(d.date, 1).then(fwd => {
       if (!state.selected || state.selected.sectorName !== sector.name) return;
       const map = new Map(fwd.rows.map(r => [r.code, r.forward]));
+      const vals = [];
       $$(`#premium-3d .premium-row[data-date="${d.date}"]`).forEach(row => {
         const forward = map.get(row.dataset.code);
         const v = forward && forward[0];
+        if (v != null) vals.push(v);
         const cell = row.querySelector(".premium-value");
         cell.textContent = v == null ? "--" : `${v > 0 ? "+" : ""}${v}%`;
         cell.className = `premium-value ${v == null ? "" : v >= 0 ? "up" : "down"}`;
         if (v == null) cell.title = "次日尚未收盘";
         else if (fwd.intraday) cell.title = "盘中实时涨幅，收盘后落定";
       });
-    }).catch(() => {});
+      const avgCell = $(`#premium-3d .premium-avg[data-date="${d.date}"]`);
+      if (avgCell) {
+        if (vals.length) {
+          const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+          avgCell.textContent = `均 ${avg > 0 ? "+" : ""}${avg.toFixed(2)}%`;
+          avgCell.className = `premium-avg ${avg >= 0 ? "up" : "down"}`;
+          if (fwd.intraday) avgCell.title = "盘中实时涨幅，收盘后落定";
+        } else {
+          avgCell.textContent = sec ? "--" : "";
+          if (sec) avgCell.title = "次日尚未收盘";
+        }
+      }
+    }).catch(() => {
+      const avgCell = $(`#premium-3d .premium-avg[data-date="${d.date}"]`);
+      if (avgCell) avgCell.textContent = sec ? "--" : "";
+    });
   });
 
-  // 近7日涨停数量趋势
-  const trend = boardDays().map(d => {
-    const hit = matchSector(d);
-    return { date: fmtDate(d.date), count: hit ? hit.count : 0 };
+  // 近 5 日板块统计（口径与情绪页板块详情一致）
+  const win = allDays.slice(-5);
+  const rowsHtml = win.map(d => {
+    const sec = matchSector(d);
+    const stocks = sec ? sec.stocks : [];
+    const count = stocks.length;
+    const maxLbc = count ? Math.max(...stocks.map(s => s.lbc || 0)) : 0;
+    const rookie = stocks.filter(s => (s.lbc || 0) <= 1).length;
+    const brokenN = (d.broken || []).filter(b => (b.concepts && b.concepts.length ? b.concepts.some(t => themeSet.has(t)) : b.sector === sector.name)).length;
+    const breakRate = (brokenN + count) ? Math.round(brokenN / (brokenN + count) * 1000) / 10 : null;
+    const prevDay = allDays[allDays.indexOf(d) - 1];
+    const prevSec = prevDay ? matchSector(prevDay) : null;
+    let promotion = null;
+    if (prevSec && prevSec.stocks.length) {
+      const todayCodes = new Set(d.sectors.flatMap(s2 => s2.stocks.map(st => st.code)));
+      promotion = Math.round(prevSec.stocks.filter(st => todayCodes.has(st.code)).length / prevSec.stocks.length * 1000) / 10;
+    }
+    return `<div class="data-row"><strong>${fmtDate(d.date)}</strong><span>${count} 家</span><span>${maxLbc} 板</span><span>${rookie} 首板</span><span>${promotion == null ? "--" : promotion + "%"}</span><span>${breakRate == null ? "--" : breakRate + "%"}</span><span class="prem-cell" data-sec-day="${d.date}">…</span></div>`;
+  }).join("");
+  $("#trend-table").innerHTML = `<div class="data-table cycle-table"><div class="data-row head"><span>日期</span><span>家数</span><span>高度</span><span>首板</span><span>晋级率</span><span>炸板率</span><span>隔日溢价</span></div>${rowsHtml}</div>`;
+  // 隔日溢价列：前一交易日板块股今日收盘对收盘均值，异步填充
+  win.forEach(d => {
+    const cell = $(`#trend-table .prem-cell[data-sec-day="${d.date}"]`);
+    if (!cell) return;
+    const prevDay = allDays[allDays.indexOf(d) - 1];
+    const prevSec = prevDay ? matchSector(prevDay) : null;
+    if (!prevDay || !prevSec || !prevSec.stocks.length) { cell.textContent = "--"; return; }
+    loadForward(prevDay.date, 1).then(fwd => {
+      if (!state.selected || state.selected.sectorName !== sector.name) return;
+      const map = new Map(fwd.rows.map(r => [r.code, r.forward]));
+      const vals = prevSec.stocks.map(st => (map.get(st.code) || [])[0]).filter(v => v != null);
+      if (!vals.length) { cell.textContent = "--"; cell.title = "次日尚未收盘"; return; }
+      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+      cell.textContent = `${avg > 0 ? "+" : ""}${avg.toFixed(2)}%`;
+      cell.classList.add(avg >= 0 ? "up" : "down");
+      if (fwd.intraday) cell.title = "盘中实时涨幅，收盘后落定";
+    }).catch(() => { cell.textContent = "--"; });
   });
-  const maxCount = Math.max(...trend.map(t => t.count), 1);
-  $("#trend-chart").innerHTML = trend.map((t, i) => `<div class="trend-col ${i === trend.length - 1 ? "latest" : ""}"><b>${t.count}</b><i style="height:${Math.max(6, Math.round(t.count / maxCount * 100))}%"></i><span>${t.date}</span></div>`).join("");
 
   $("#detail-drawer").classList.add("is-open");
   $("#detail-drawer").setAttribute("aria-hidden", "false");
@@ -566,6 +615,48 @@ async function openStockChart(code, name) {
   } catch (error) {
     $("#stock-chart-sub").textContent = error.message;
   }
+  // 近 5 日涨停动能（首封时间 + 封单金额），数据来自已加载的涨停数据集
+  if (!state.dataset) {
+    try { await loadDataset(state.endDate, { silent: true }); } catch (e) { /* 忽略 */ }
+  }
+  renderStockLimitHist(code);
+}
+
+function renderStockLimitHist(code) {
+  const box = $("#stock-limitup-hist");
+  if (!box) return;
+  const days = ((state.dataset && state.dataset.days) || []).slice(-5);
+  if (!days.length) { box.innerHTML = `<p class="stair-empty">涨停数据集未加载</p>`; return; }
+  const entries = days.map(d => {
+    let hit = null;
+    for (const sec of d.sectors) {
+      const s = sec.stocks.find(st => st.code === code);
+      if (s) { hit = s; break; }
+    }
+    return { date: d.date, hit };
+  });
+  const toMin = v => {
+    const s = String(v || "").padStart(6, "0");
+    return /^\d{6}$/.test(s) && s !== "000000" ? Number(s.slice(0, 2)) * 60 + Number(s.slice(2, 4)) : null;
+  };
+  const fmtTime = v => { const s = String(v || "").padStart(6, "0"); return `${s.slice(0, 2)}:${s.slice(2, 4)}`; };
+  // 首封时间：09:30 → 15:00 线性时间轴，条越短封板越早（越强）
+  const timeRows = entries.map(e => {
+    const m = e.hit ? toMin(e.hit.firstSeal) : null;
+    if (m == null) return `<div class="lh-row"><span class="lh-date">${fmtDate(e.date)}</span><span class="lh-track"><i class="lh-none"></i></span><span class="lh-val is-muted">未涨停</span></div>`;
+    const pct = Math.max(2, Math.min(100, (m - 570) / 330 * 100));
+    const label = m <= 571 ? "秒板" : fmtTime(e.hit.firstSeal);
+    return `<div class="lh-row"><span class="lh-date">${fmtDate(e.date)}</span><span class="lh-track"><i class="lh-seal ${m <= 600 ? "early" : ""}" style="width:${pct}%"></i></span><span class="lh-val">${label}</span></div>`;
+  }).join("");
+  const maxFund = Math.max(...entries.map(e => (e.hit && e.hit.fund) || 0), 0.01);
+  const fundCols = entries.map((e, i) => {
+    const f = (e.hit && e.hit.fund) || 0;
+    const h = e.hit ? Math.max(6, Math.round(f / maxFund * 100)) : 3;
+    return `<div class="lh-col ${e.hit ? "" : "is-muted"} ${i === entries.length - 1 && e.hit ? "latest" : ""}"><b>${e.hit ? fmtYi(f) : "--"}</b><i style="height:${h}%"></i><span>${fmtDate(e.date)}</span></div>`;
+  }).join("");
+  box.innerHTML = `
+    <div class="lh-block"><h4>首封时间趋势<small>越早越强 · 仅显示涨停日</small></h4>${timeRows}</div>
+    <div class="lh-block"><h4>封单金额趋势<small>单位：亿元 · 仅显示涨停日</small></h4><div class="lh-bars">${fundCols}</div></div>`;
 }
 
 function fitCanvas(canvas, cssH) {
