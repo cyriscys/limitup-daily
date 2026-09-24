@@ -553,3 +553,34 @@ body.view-flow .daily-summary { display: none; }
 .lh-col.is-muted i { background: rgba(0,0,0,.1); }
 .lh-col span { color: var(--muted); font: 8.5px var(--mono); }
 @media (max-width: 720px) { .limit-hist { grid-template-columns: 1fr; } }
+
+/* ===== 市场情绪：宏观条 + 情绪每日明细矩阵 ===== */
+.macro-strip { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin: 14px 0 4px; }
+.macro-strip > div { padding: 11px 13px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--panel-2); }
+.macro-strip span { display: block; font-size: 10px; letter-spacing: .04em; color: var(--muted); }
+.macro-strip strong { display: block; margin: 3px 0 1px; font: 600 16px var(--mono); color: var(--text); }
+.macro-strip small { display: block; font: 400 10px var(--mono); color: var(--muted); }
+@media (max-width: 720px) { .macro-strip { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+.matrix-scroll { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--panel-2); }
+.sentiment-matrix { width: 100%; border-collapse: collapse; font: 11px var(--mono); min-width: 620px; }
+.sentiment-matrix th, .sentiment-matrix td { padding: 7px 10px; text-align: right; white-space: nowrap; }
+.sentiment-matrix thead th { position: sticky; top: 0; background: var(--panel-3, #152235); color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line); }
+.sentiment-matrix thead th b { display: block; font: 600 11px var(--mono); color: var(--text); }
+.sentiment-matrix thead th small { display: block; font-size: 9px; color: var(--muted); }
+.sentiment-matrix tbody th { text-align: left; position: sticky; left: 0; background: var(--panel-2); color: var(--text); font-weight: 500; border-right: 1px solid var(--line-soft); z-index: 1; }
+.sentiment-matrix tbody th small { margin-left: 3px; font-size: 9px; color: var(--muted); font-weight: 400; }
+.sentiment-matrix td { color: var(--text); border-bottom: 1px solid rgba(125,155,190,.07); }
+.sentiment-matrix tr.matrix-row:hover td, .sentiment-matrix tr.matrix-row:hover th { background: rgba(85,199,217,.06); }
+.sentiment-matrix td.is-latest, .sentiment-matrix thead th.is-latest { background: rgba(85,199,217,.10); }
+.sentiment-matrix td.is-up { color: var(--up); }
+.sentiment-matrix td.is-down { color: var(--down); }
+.matrix-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+.sentiment-matrix tr.matrix-group td { text-align: left; padding: 8px 10px 4px; font: 500 9.5px var(--font); letter-spacing: .08em; color: var(--cyan); background: transparent; border-bottom: 0; }
+.matrix-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 9px 2px 0; font-size: 10px; color: var(--muted); }
+.matrix-legend .sw { display: inline-block; width: 12px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: 2px; }
+.matrix-legend .sw.is-up { background: var(--up); }
+.matrix-legend .sw.is-down { background: var(--down); }
+.matrix-legend .sw.mid { background: rgba(125,155,190,.35); }
+.matrix-legend .matrix-note { margin-left: auto; opacity: .8; }
+@media (max-width: 720px) { .matrix-legend .matrix-note { margin-left: 0; width: 100%; } }
