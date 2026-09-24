@@ -785,10 +785,72 @@ function sentimentTrendSVG(days, colors) {
   return `<svg viewBox="0 0 ${W} ${H}" class="sentiment-trend-svg">${grids}<polyline points="${pts}" fill="none" stroke="#1d1d1f" stroke-width="2" stroke-linejoin="round" opacity="0.55"/>${dots}${labels}</svg>`;
 }
 
+// ---------- 情绪每日明细矩阵（行=指标，列=交易日） ----------
+const MATRIX_DAYS = 10;
+
+function fmtMatrixValue(row, key, unit) {
+  const v = row[key];
+  if (v === null || v === undefined) return { text: "—", tone: "" };
+  if (key === "temp") return { text: `${v}`, tone: "" };
+  if (key === "amount") return { text: Number(v).toLocaleString(), tone: "" };
+  const num = Number(v);
+  const sign = key === "idxChg" || key === "premiumAvg" ? (num > 0 ? "+" : "") : "";
+  return { text: `${sign}${num}${unit || ""}`, tone: "" };
+}
+
+function sentimentMatrixHTML(data, colors) {
+  const all = data.days || [];
+  const days = all.slice(-MATRIX_DAYS);
+  if (!days.length) return `<p class="empty-lane">暂无明细数据</p>`;
+  const metrics = data.metrics || [];
+  const head = days.map(d =>
+    `<th class="${d === days[days.length - 1] ? "is-latest" : ""}"><b>${fmtDate(d.date).replace(/^\d{4}-/, "")}</b><small>${esc(d.weekday || "")}</small></th>`
+  ).join("");
+  let lastGroup = "";
+  const body = metrics.map(m => {
+    let groupRow = "";
+    if (m.group !== lastGroup) {
+      lastGroup = m.group;
+      groupRow = `<tr class="matrix-group"><td colspan="${days.length + 1}">${esc(m.group)}指标</td></tr>`;
+    }
+    const cells = days.map((d, i) => {
+      const prev = i > 0 ? days[i - 1] : all[all.indexOf(d) - 1];
+      const { text } = fmtMatrixValue(d, m.key, m.unit);
+      let cls = "";
+      if (prev) {
+        const a = prev[m.key], b = d[m.key];
+        if (a !== null && a !== undefined && b !== null && b !== undefined && b !== a) {
+          cls = Number(b) > Number(a) ? "is-up" : "is-down";
+        }
+      }
+      const extra = m.key === "temp"
+        ? ` style="background:${(colors[d.stage] || "#86868b")}14" title="${esc(d.stage)}：${esc(d.stageNote || "")}"`
+        : "";
+      const stageDot = m.key === "temp"
+        ? `<i class="matrix-dot" style="background:${colors[d.stage] || "#86868b"}"></i>` : "";
+      return `<td class="${cls} ${i === days.length - 1 ? "is-latest" : ""}"${extra}>${stageDot}${text}</td>`;
+    }).join("");
+    return `${groupRow}<tr class="matrix-row"><th>${esc(m.label)}${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</th>${cells}</tr>`;
+  }).join("");
+  return `
+    <div class="matrix-scroll">
+      <table class="sentiment-matrix">
+        <thead><tr><th>指标</th>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    <p class="matrix-legend">
+      <span><i class="sw is-up"></i>较前一交易日上升</span>
+      <span><i class="sw is-down"></i>较前一交易日下降</span>
+      <span><i class="sw mid"></i>持平 / 无对比</span>
+      <span class="matrix-note">涨跌家数与红盘占比为全市场实时快照口径，历史日无缓存显示「—」，不做估算</span>
+    </p>`;
+}
+
 async function renderSentiment() {
   const board = $("#board");
   $("#board-title").textContent = "市场情绪温度计";
-  $("#board-eyebrow").textContent = "MARKET SENTIMENT · 六指标量化打分";
+  $("#board-eyebrow").textContent = "MARKET SENTIMENT · 六大核心指标量化打分";
   if (!state.sentiment) board.innerHTML = `<p class="empty-lane board-loading">正在计算情绪温度（首次约需 1 分钟，抓取真实 K 线）……</p>`;
   let data;
   try {
@@ -809,10 +871,18 @@ async function renderSentiment() {
     { label: "涨停家数", value: `${latest.zt} 家`, sub: `已剔除 ST/新股`, score: `+${sc.zt ?? 0} / 30` },
     { label: "最高连板", value: `${latest.maxLbc} 板`, sub: "情绪天花板", score: `+${sc.height ?? 0} / 20` },
     { label: "昨涨停今日溢价", value: premiumText, sub: `红盘率 ${latest.redRatio == null ? "--" : latest.redRatio + "%"}`, score: sc.premium == null ? "-- / 25" : `+${sc.premium} / 25` },
-    { label: "炸板率", value: `${latest.brokenRate}%`, sub: `炸板 ${latest.broken} 家`, score: `+${sc.broken ?? 0} / 15` },
+    { label: "封板率", value: `${latest.sealRate ?? "--"}%`, sub: `炸板 ${latest.broken} 家`, score: `+${sc.broken ?? 0} / 15` },
     { label: "跌停家数", value: `${latest.downLimit} 家`, sub: `大面（跌超5%）${latest.damain == null ? "--" : latest.damain} 家`, score: `${sc.downLimit ?? 0} / 0` },
-    { label: "连板晋级率", value: latest.promotion == null ? "--" : `${latest.promotion}%`, sub: "昨日2板+今日继续涨停", score: "结构信号" },
+    { label: "连板家数", value: `${latest.lianban ?? "--"} 家`, sub: `首板 ${latest.zt - (latest.lianban || 0)} 家`, score: "结构信号" },
   ];
+  const breadthText = latest.up == null ? "--" : `涨 ${latest.up} / 跌 ${latest.down}`;
+  const macroStrip = `
+    <div class="macro-strip">
+      <div><span>涨跌家数对比</span><strong>${breadthText}</strong><small>${latest.upRatio == null ? "全市场口径" : `红盘占比 ${latest.upRatio}%`}</small></div>
+      <div><span>两市成交额</span><strong>${latest.amount ? latest.amount.toLocaleString() + " 亿" : "--"}</strong><small>${esc(latest.volumeTag || "--")} · 成交 ${latest.volume ?? "--"} 亿手</small></div>
+      <div><span>沪指涨跌</span><strong>${latest.idxChg == null ? "--" : (latest.idxChg > 0 ? "+" : "") + latest.idxChg + "%"}</strong><small>宏观环境</small></div>
+      <div><span>首板晋级率</span><strong>${latest.promo1 == null ? "--" : latest.promo1 + "%"}</strong><small>连板晋级 ${latest.promo2 == null ? "--" : latest.promo2 + "%"}</small></div>
+    </div>`;
   const stageList = (data.stages || []).map(s =>
     `<div class="stage-item ${s.name === latest.stage ? "is-active" : ""}"><i style="background:${s.color}"></i><div><strong>${esc(s.name)}</strong><small>${esc(s.range)}</small><p>${esc(s.desc)}</p></div></div>`
   ).join("");
@@ -830,9 +900,11 @@ async function renderSentiment() {
       <div class="sentiment-cards">${cards.map(c =>
         `<div class="sentiment-card"><span>${c.label}</span><strong>${c.value}</strong><small>${c.sub}</small><em>${c.score}</em></div>`
       ).join("")}</div>
+      ${macroStrip}
       <div class="sentiment-section"><h3>近 ${data.days.length} 日温度走势</h3>${sentimentTrendSVG(data.days, colors)}</div>
-      <div class="sentiment-section"><h3>五阶段判定标准</h3><div class="stage-list">${stageList}</div></div>
-      <p class="analysis-foot-note">${esc(data.rules.formula)}<br>涨停 ${esc(data.rules.zt)}；高度 ${esc(data.rules.height)}；溢价 ${esc(data.rules.premium)}；炸板率 ${esc(data.rules.broken)}；跌停 ${esc(data.rules.downLimit)}。<br>${esc(data.source)} · 不构成投资建议</p>
+      <div class="sentiment-section"><h3>情绪每日明细 · 近 ${Math.min(10, data.days.length)} 个交易日</h3>${sentimentMatrixHTML(data, colors)}</div>
+      <div class="sentiment-section"><h3>七阶段判定标准</h3><div class="stage-list">${stageList}</div></div>
+      <p class="analysis-foot-note">${esc(data.rules.formula)}<br>涨停 ${esc(data.rules.zt)}；高度 ${esc(data.rules.height)}；溢价 ${esc(data.rules.premium)}；炸板率 ${esc(data.rules.broken)}；跌停 ${esc(data.rules.downLimit)}。<br>${esc(data.rules.breadth || "")}<br>${esc(data.source)} · 不构成投资建议</p>
     </div>`;
   const panel = board.querySelector(".sentiment-panel");
   if (panel) renderMomentumInto(panel);
@@ -840,7 +912,7 @@ async function renderSentiment() {
 
 async function loadSentiment(force) {
   if (state.sentiment && !force) return state.sentiment;
-  const response = await fetch("/api/sentiment?days=40", { cache: "no-store" });
+  const response = await fetch("/api/sentiment?days=20", { cache: "no-store" });
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(data.notice || "情绪温度暂不可用");
   state.sentiment = data;
