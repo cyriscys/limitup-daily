@@ -564,6 +564,9 @@ body.view-flow .daily-summary { display: none; }
 
 .matrix-scroll { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--panel-2); }
 .sentiment-matrix { width: 100%; border-collapse: collapse; font: 11px var(--mono); min-width: 620px; }
+/* 防御：情绪明细表是<table>，行必须保持 table-row（.matrix-row 已被连板高度矩阵占用为 grid） */
+.sentiment-matrix tr { display: table-row; }
+.sentiment-matrix th, .sentiment-matrix td { display: table-cell; }
 .sentiment-matrix th, .sentiment-matrix td { padding: 7px 10px; text-align: right; white-space: nowrap; }
 .sentiment-matrix thead th { position: sticky; top: 0; background: var(--panel-3, #152235); color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line); }
 .sentiment-matrix thead th b { display: block; font: 600 11px var(--mono); color: var(--text); }
@@ -571,7 +574,7 @@ body.view-flow .daily-summary { display: none; }
 .sentiment-matrix tbody th { text-align: left; position: sticky; left: 0; background: var(--panel-2); color: var(--text); font-weight: 500; border-right: 1px solid var(--line-soft); z-index: 1; }
 .sentiment-matrix tbody th small { margin-left: 3px; font-size: 9px; color: var(--muted); font-weight: 400; }
 .sentiment-matrix td { color: var(--text); border-bottom: 1px solid rgba(125,155,190,.07); }
-.sentiment-matrix tr.matrix-row:hover td, .sentiment-matrix tr.matrix-row:hover th { background: rgba(85,199,217,.06); }
+.sentiment-matrix tr.sm-row:hover td, .sentiment-matrix tr.sm-row:hover th { background: rgba(85,199,217,.06); }
 .sentiment-matrix td.is-latest, .sentiment-matrix thead th.is-latest { background: rgba(85,199,217,.10); }
 .sentiment-matrix td.is-up { color: var(--up); }
 .sentiment-matrix td.is-down { color: var(--down); }
