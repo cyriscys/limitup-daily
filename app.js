@@ -830,7 +830,7 @@ function sentimentMatrixHTML(data, colors) {
         ? `<i class="matrix-dot" style="background:${colors[d.stage] || "#86868b"}"></i>` : "";
       return `<td class="${cls} ${i === days.length - 1 ? "is-latest" : ""}"${extra}>${stageDot}${text}</td>`;
     }).join("");
-    return `${groupRow}<tr class="matrix-row"><th>${esc(m.label)}${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</th>${cells}</tr>`;
+    return `${groupRow}<tr class="sm-row"><th>${esc(m.label)}${m.unit ? `<small>${esc(m.unit)}</small>` : ""}</th>${cells}</tr>`;
   }).join("");
   return `
     <div class="matrix-scroll">
@@ -843,7 +843,7 @@ function sentimentMatrixHTML(data, colors) {
       <span><i class="sw is-up"></i>较前一交易日上升</span>
       <span><i class="sw is-down"></i>较前一交易日下降</span>
       <span><i class="sw mid"></i>持平 / 无对比</span>
-      <span class="matrix-note">涨跌家数与红盘占比为全市场实时快照口径，历史日无缓存显示「—」，不做估算</span>
+      <span class="matrix-note">涨跌家数与红盘占比为全市场（沪深）口径：当日为实时快照，历史由全市场 A 股日K反算，取不到才显示「—」</span>
     </p>`;
 }
 
