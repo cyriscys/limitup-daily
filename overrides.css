@@ -587,3 +587,38 @@ body.view-flow .daily-summary { display: none; }
 .matrix-legend .sw.mid { background: rgba(125,155,190,.35); }
 .matrix-legend .matrix-note { margin-left: auto; opacity: .8; }
 @media (max-width: 720px) { .matrix-legend .matrix-note { margin-left: 0; width: 100%; } }
+
+/* ---------- 板块选择器（输入 + 过往板块点选 · 浅色主题） ---------- */
+dialog.sector-picker { width: min(640px, calc(100vw - 24px)); border-color: var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 24px 70px rgba(0,0,0,.22); color-scheme: light; }
+.sector-picker::backdrop { background: rgba(0,0,0,.32); backdrop-filter: blur(5px); }
+.sector-picker .picker-shell { display: flex; flex-direction: column; }
+.sector-picker header { align-items: flex-start; padding: 16px 18px 13px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.sector-picker header h2 { font-size: 17px; letter-spacing: -.01em; color: var(--text); }
+.sector-picker header small { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.sector-picker .picker-reset { border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; color: var(--muted); background: #fff; cursor: pointer; font-size: 10px; }
+.sector-picker .picker-reset:hover { color: var(--text); }
+.sector-picker .picker-body { padding: 14px 18px 6px; }
+.sector-picker .picker-input-wrap { display: flex; gap: 8px; }
+.sector-picker #picker-input { flex: 1; min-width: 0; height: 38px; padding: 0 12px; border: 1px solid rgba(0,0,0,.16); border-radius: 8px; color: var(--text); background: #fff; font-size: 13px; color-scheme: light; }
+.sector-picker #picker-input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(0,113,227,.12); }
+.sector-picker .picker-restore { flex: none; padding: 0 12px; border: 1px solid rgba(217,45,32,.35); border-radius: 8px; color: var(--up); background: rgba(217,45,32,.05); cursor: pointer; font-size: 10px; }
+.sector-picker .picker-restore:hover { background: rgba(217,45,32,.1); }
+.sector-picker .picker-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; max-height: 268px; margin-top: 12px; padding-right: 4px; overflow-y: auto; scrollbar-color: rgba(0,0,0,.2) transparent; }
+.sector-picker .picker-chip { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--panel-2); cursor: pointer; text-align: left; transition: border-color .14s ease, background .14s ease, box-shadow .14s ease; }
+.sector-picker .picker-chip:hover { border-color: rgba(0,113,227,.4); background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.sector-picker .picker-chip.is-active { border-color: var(--cyan); background: var(--cyan-soft); box-shadow: 0 0 0 1px var(--cyan); }
+.sector-picker .picker-chip b { font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sector-picker .picker-chip small { color: var(--muted); font: 8px var(--mono); }
+.sector-picker .picker-empty { grid-column: 1/-1; margin: 4px 0; padding: 18px 10px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: 10px; text-align: center; }
+.sector-picker .picker-foot { margin: 9px 0 8px; color: var(--muted); font-size: 9px; }
+.sector-picker footer { justify-content: flex-end; gap: 8px; padding: 11px 18px; border-top: 1px solid var(--line); background: var(--panel-2); }
+.sector-picker footer button { padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 11px; }
+.sector-picker footer .picker-cancel { border: 1px solid var(--line); color: var(--muted); background: #fff; }
+.sector-picker footer .picker-cancel:hover { color: var(--text); }
+.sector-picker footer .picker-ok { border: 1px solid var(--cyan); color: #fff; background: var(--cyan); font-weight: 600; }
+.sector-picker footer .picker-ok:hover { background: #0068c9; }
+@media (max-width: 560px) {
+  .sector-picker .picker-input-wrap { flex-wrap: wrap; }
+  .sector-picker .picker-restore { height: 34px; width: 100%; }
+  .sector-picker .picker-chips { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); max-height: 220px; }
+}
