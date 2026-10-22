@@ -262,13 +262,155 @@ async function postAdmin(url, payload) {
   throw new Error("管理密码不正确");
 }
 
+/* ---------- 板块选择器：可直接输入，也可点选过往出现过的板块 ---------- */
+let sectorOptionsPromise = null;
+
+function datasetSectorStats() {
+  const stats = new Map();
+  ((state.dataset && state.dataset.days) || []).forEach(day => {
+    (day.sectors || []).forEach(sec => {
+      if (!sec || !sec.name) return;
+      const cur = stats.get(sec.name) || { name: sec.name, days: 0, count: 0 };
+      cur.days += 1;
+      cur.count += sec.count || (sec.stocks || []).length || 0;
+      stats.set(sec.name, cur);
+    });
+  });
+  return stats;
+}
+
+async function loadSectorOptions() {
+  if (sectorOptionsPromise) return sectorOptionsPromise;
+  sectorOptionsPromise = (async () => {
+    const stats = datasetSectorStats();
+    const extra = new Set();
+    try {
+      const res = await fetch("/api/sector-options", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        (data.sectors || []).forEach(n => { if (n) extra.add(String(n).trim()); });
+      }
+    } catch (err) { /* 离线时只用本地数据集 */ }
+    const list = [];
+    stats.forEach(v => { list.push(v); extra.delete(v.name); });
+    extra.forEach(n => { if (n) list.push({ name: n, days: 0, count: 0 }); });
+    list.sort((a, b) => (b.days - a.days) || (b.count - a.count) || a.name.localeCompare(b.name, "zh-CN"));
+    return list;
+  })();
+  return sectorOptionsPromise;
+}
+
+/**
+ * 打开板块选择器。
+ * @returns {Promise<null|{action:"ok"|"restore", value:string}>}
+ */
+function askSector(opts = {}) {
+  const dialog = $("#sector-picker");
+  if (!dialog) return Promise.resolve(null);
+  const titleEl = $("#picker-title");
+  const noteEl = $("#picker-note");
+  const input = $("#picker-input");
+  const chipsBox = $("#picker-chips");
+  const foot = $("#picker-foot");
+  const restoreBtn = $("#picker-restore");
+  const okBtn = $("#picker-ok");
+  const listEl = $("#sector-options-list");
+  const resetBtn = $("#picker-reset");
+
+  titleEl.textContent = opts.title || "选择板块";
+  noteEl.textContent = opts.note || "可直接输入新板块名，或从下方过往板块中点选";
+  input.value = opts.value || "";
+  input.placeholder = opts.placeholder || "输入或选择板块名";
+  restoreBtn.hidden = !opts.showRestore;
+  restoreBtn.textContent = opts.restoreLabel || "恢复自动判定";
+  resetBtn.hidden = !opts.showReset;
+  okBtn.textContent = opts.confirmText || "确定";
+
+  let settled = false;
+  let currentList = [];
+  let filter = "";
+
+  const markChip = () => {
+    const v = input.value.trim();
+    chipsBox.querySelectorAll(".picker-chip").forEach(btn => {
+      btn.classList.toggle("is-active", btn.dataset.name === v);
+    });
+  };
+
+  const renderChips = () => {
+    const q = filter.trim().toLowerCase();
+    const matched = currentList.filter(item => !q || item.name.toLowerCase().includes(q));
+    const shown = matched.slice(0, 80);
+    chipsBox.innerHTML = shown.length
+      ? shown.map(item => `<button type="button" class="picker-chip" data-name="${esc(item.name)}"><b>${esc(item.name)}</b>${item.days ? `<small>${item.days}日 · ${item.count}家</small>` : `<small>手动指定</small>`}</button>`).join("")
+      : `<p class="picker-empty">没有匹配的板块，直接输入新名字即可创建。</p>`;
+    foot.textContent = matched.length > shown.length
+      ? `匹配 ${matched.length} 个，显示前 ${shown.length} 个，继续输入可缩小范围`
+      : `共 ${matched.length} 个板块可选 · 点击即填入`;
+    markChip();
+  };
+
+  const finish = (result) => {
+    if (settled) return;
+    settled = true;
+    dialog.close();
+    resolveFn(result);
+  };
+  let resolveFn = () => {};
+
+  const promise = new Promise(resolve => { resolveFn = resolve; });
+
+  dialog.onclose = () => {
+    if (!settled) { settled = true; resolveFn(null); }
+  };
+  okBtn.onclick = () => finish({ action: "ok", value: input.value.trim() });
+  $("#picker-cancel").onclick = () => finish(null);
+  dialog.onclick = (event) => { if (event.target === dialog) finish(null); };
+  dialog.oncancel = () => { if (!settled) { settled = true; resolveFn(null); } };
+  restoreBtn.onclick = () => finish({ action: "restore", value: "" });
+  resetBtn.onclick = () => { input.value = ""; filter = ""; input.focus(); markChip(); };
+  input.oninput = () => { filter = input.value; renderChips(); };
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") { event.preventDefault(); finish({ action: "ok", value: input.value.trim() }); }
+  };
+  chipsBox.onclick = (event) => {
+    const btn = event.target.closest(".picker-chip");
+    if (!btn) return;
+    input.value = btn.dataset.name || "";
+    filter = "";
+    markChip();
+    input.focus();
+  };
+
+  dialog.showModal();
+  input.focus();
+  input.select();
+
+  loadSectorOptions().then(list => {
+    if (settled) return;
+    currentList = list;
+    listEl.innerHTML = list.map(item => `<option value="${esc(item.name)}"></option>`).join("");
+    renderChips();
+  }).catch(() => { foot.textContent = "板块列表加载失败，可直接输入板块名"; });
+
+  return promise;
+}
+
 async function moveStock(button) {
   const code = button.dataset.code, name = button.dataset.name;
   const current = button.dataset.bucket || "";
-  const input = prompt(`把「${name}」归入哪个板块？\n（输入新板块名；输入"恢复"清除手动设置，回到自动判定）`, current);
-  if (input === null) return;
-  const sector = input.trim() === "恢复" ? "" : input.trim();
-  if (!sector && input.trim() !== "恢复") return;
+  const picked = await askSector({
+    title: `把「${name}」归入哪个板块？`,
+    note: "点选过往板块，或直接输入新板块名；恢复后回到自动判定",
+    value: current,
+    showRestore: true,
+    showReset: true,
+    restoreLabel: "恢复自动判定",
+    confirmText: "保存",
+  });
+  if (!picked) return;
+  const sector = picked.action === "restore" ? "" : picked.value;
+  if (!sector && picked.action !== "restore") return;
   try {
     await postAdmin("/api/sector-override", { code, sector });
     showToast(sector ? `${name} → ${sector}，重新计算中…` : `${name} 已恢复自动判定，重新计算中…`);
@@ -289,11 +431,18 @@ async function renameSector() {
   if (!state.selected) return;
   const oldName = state.selected.sectorName;
   const dayIndex = state.selected.dayIndex;
-  const input = prompt(`把板块「${oldName}」改名为：\n（所有历史与未来交易日统一生效；输入"恢复"清除改名映射）`, oldName);
-  if (input === null) return;
-  const trimmed = input.trim();
-  const newName = trimmed === "恢复" ? "" : trimmed;
-  if (!newName && trimmed !== "恢复") return;
+  const picked = await askSector({
+    title: `把「${oldName}」改名为`,
+    note: "所有历史与未来交易日统一生效；可点选已有板块合并，也可输入新名字",
+    value: oldName,
+    showRestore: true,
+    showReset: true,
+    restoreLabel: "恢复原名",
+    confirmText: "改名",
+  });
+  if (!picked) return;
+  const newName = picked.action === "restore" ? "" : picked.value;
+  if (!newName && picked.action !== "restore") return;
   if (newName === oldName) return;
   try {
     await postAdmin("/api/sector-rename", { old: oldName, new: newName });
