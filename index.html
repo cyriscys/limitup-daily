@@ -7,7 +7,7 @@
     <meta name="description" content="交易脉冲——多交易日板块节奏与可解释预测工作台" />
     <title>交易脉冲 · 多日板块节奏</title>
     <link rel="stylesheet" href="styles.css?v=2" />
-    <link rel="stylesheet" href="overrides.css?v=10" />
+    <link rel="stylesheet" href="overrides.css?v=11" />
   </head>
   <body>
     <a class="skip-link" href="#board">跳到看板</a>
@@ -48,7 +48,7 @@
       <header class="drawer-head"><div><p id="drawer-date">-- / --</p><h2 id="drawer-title">板块</h2></div><div class="drawer-head-actions"><button id="drawer-rename" class="drawer-rename" title="人工修改板块名（历史与未来交易日统一生效）">改名</button><button id="drawer-close" aria-label="关闭详情">关闭</button></div></header>
       <div class="drawer-body">
         <section class="drawer-section"><div class="section-heading"><h3>板块内股票</h3><span id="drawer-stock-count" class="section-note">-- 家涨停</span></div><div id="drawer-stocks" class="stock-list"></div></section>
-        <section class="drawer-section"><div class="section-heading"><h3>最近三天涨停 · 隔天溢价率</h3><span class="section-note">收盘对收盘 · 最新在前</span></div><div id="premium-3d" class="premium-3d"></div></section>
+        <section class="drawer-section"><div class="section-heading"><h3>近一周 · 每日梯队明细</h3><span class="section-note">流通市值 / 上板时间 / 封单 / 炸板</span></div><div id="drawer-week" class="week-ladder"></div></section>
         <section class="drawer-section"><div class="section-heading"><h3>近 5 日板块统计</h3><span class="section-note">与情绪页口径一致</span></div><div id="trend-table" class="trend-table-wrap"></div></section>
       </div>
       <footer class="drawer-foot"><span>真实涨停池 · 非投资建议</span><button id="model-card-button">数据口径</button></footer>
@@ -68,6 +68,6 @@
       </div>
     </dialog>
     <script src="static-shim.js?v=6"></script>
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>
