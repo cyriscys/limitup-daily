@@ -264,17 +264,6 @@ body { background: var(--bg); }
 .trend-col.latest i { background: var(--cyan); }
 .trend-col span { color: var(--muted); font: 8px var(--mono); }
 
-/* 最近三天隔天溢价 */
-.premium-3d { display: grid; gap: 8px; }
-.premium-day { border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); overflow: hidden; }
-.premium-day header { display: flex; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); color: var(--text); font-size: 10px; font-weight: 600; }
-.premium-day header span { color: var(--muted); font-weight: 400; font-size: 8px; }
-.premium-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line-soft); font-size: 10px; }
-.premium-row:last-child { border-bottom: 0; }
-.premium-row small { margin-left: 6px; color: var(--muted); font-size: 8px; }
-.premium-value { font: 600 10px var(--mono); font-style: normal; color: var(--muted); }
-.premium-value.up { color: var(--up); }
-.premium-value.down { color: var(--down); }
 .stock-row.real.is-broken strong { color: var(--muted); }
 
 /* 弹窗/对话框/提示 浅色 */
@@ -622,3 +611,28 @@ dialog.sector-picker { width: min(640px, calc(100vw - 24px)); border-color: var(
   .sector-picker .picker-restore { height: 34px; width: 100%; }
   .sector-picker .picker-chips { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); max-height: 220px; }
 }
+
+/* ---------- 近一周每日梯队明细 ---------- */
+.week-ladder { display: grid; gap: 10px; }
+.week-day { border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); overflow: hidden; }
+.week-day-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 11px; background: var(--panel-3); border-bottom: 1px solid var(--line); }
+.week-day-head b { font-size: 11px; color: var(--text); }
+.week-day-head span { color: var(--muted); font-size: 9px; }
+.week-day-body { overflow-x: auto; }
+.week-table { width: 100%; min-width: 352px; border-collapse: collapse; font: 10px var(--mono); color-scheme: light; }
+.week-table th { padding: 5px 7px; color: var(--muted); font: 500 8px var(--font); text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line-soft); }
+.week-table td { padding: 6px 7px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line-soft); color: var(--text); }
+.week-table tr:last-child td { border-bottom: 0; }
+.week-table th:first-child, .week-table td:first-child { text-align: left; padding-left: 11px; }
+.week-table th:nth-child(2), .week-table td.wk-name { text-align: left; }
+.week-row { cursor: pointer; transition: background .12s ease; }
+.week-row:hover { background: #fff; }
+.wk-name b { display: block; font: 550 11px var(--font); color: var(--text); }
+.wk-name small { display: block; margin-top: 1px; color: var(--muted); font: 8px var(--mono); }
+.ladder-badge { font-style: normal; padding: 2px 5px; border-radius: 4px; background: rgba(0,113,227,.08); color: var(--cyan); font: 600 9px var(--font); white-space: nowrap; }
+.ladder-badge.lb2 { background: rgba(105,65,198,.09); color: var(--purple); }
+.ladder-badge.lb3 { background: rgba(181,71,8,.1); color: var(--amber); }
+.ladder-badge.lb4, .ladder-badge.lb5 { background: rgba(217,45,32,.09); color: var(--up); }
+.wk-broken { font-style: normal; color: var(--up); font: 600 10px var(--mono); }
+.wk-none { color: rgba(0,0,0,.22); }
+.week-empty { margin: 0; padding: 13px 11px; color: var(--muted); font-size: 10px; text-align: center; }
