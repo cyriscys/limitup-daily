@@ -119,6 +119,37 @@ function cumulativeCounts() {
 }
 
 // ---------- 板块详情弹窗（居中） ----------
+const fmtSealTime = v => {
+  const s = String(v || "").trim();
+  if (!/^\d{4,6}$/.test(s)) return "--";
+  const p = s.padStart(6, "0");
+  return `${p.slice(0, 2)}:${p.slice(2, 4)}`;
+};
+
+function renderWeekLadder(allDays, matchSector, anchorDay) {
+  const box = $("#drawer-week");
+  if (!box) return;
+  const upto = allDays.filter(d => d.date <= anchorDay.date).slice(-5).reverse();
+  box.innerHTML = upto.map(d => {
+    const sec = matchSector(d);
+    const stocks = sec ? sec.stocks : [];
+    const rows = stocks.map(s => {
+      const lbc = Number(s.lbc) || 1;
+      const cap = Number(s.floatMcap) > 0 ? (s.floatMcap / 1e8).toFixed(1) + "亿" : "--";
+      const seal = Number(s.fund) > 0 ? fmtYi(s.fund) + "亿" : "--";
+      const zbc = Number(s.zbc) || 0;
+      const tag = s.tag || (lbc > 1 ? `${lbc}连板` : "首板");
+      return `<tr class="week-row is-clickable" data-code="${esc(s.code)}" data-name="${esc(s.name)}" title="点击查看日K与分时"><td><i class="ladder-badge lb${Math.min(lbc, 5)}">${esc(tag)}</i></td><td class="wk-name"><b>${esc(s.name)}</b><small>${esc(s.code)}</small></td><td>${cap}</td><td>${fmtSealTime(s.firstSeal)}</td><td>${seal}</td><td>${zbc > 0 ? `<em class="wk-broken">炸${zbc}</em>` : `<span class="wk-none">—</span>`}</td></tr>`;
+    }).join("");
+    const head = `<div class="week-day-head"><b>${fmtDate(d.date)} ${d.weekday}</b><span>${stocks.length} 家涨停</span></div>`;
+    const body = rows
+      ? `<div class="week-day-body"><table class="week-table"><thead><tr><th>梯队</th><th>股票</th><th>流通市值</th><th>上板</th><th>封单</th><th>炸板</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<p class="week-empty">当日该板块无涨停</p>`;
+    return `<div class="week-day">${head}${body}</div>`;
+  }).join("");
+  $$("#drawer-week .week-row.is-clickable").forEach(row => row.addEventListener("click", () => openStockChart(row.dataset.code, row.dataset.name)));
+}
+
 function openDrawer(dayIndex, sectorName) {
   const day = boardDays()[dayIndex];
   const sector = day && day.sectors.find(s => s.name === sectorName);
@@ -147,49 +178,12 @@ function openDrawer(dayIndex, sectorName) {
   $$("#drawer-stocks .stock-row.is-clickable").forEach(row => row.addEventListener("click", () => openStockChart(row.dataset.code, row.dataset.name)));
   $$("#drawer-stocks .stock-move").forEach(button => button.addEventListener("click", e => { e.stopPropagation(); moveStock(button); }));
 
-  // 最近三天涨停的隔天溢价率（所选日及其前两个交易日，最新在前）
-  const allDays = state.dataset.days;
-  const upto = allDays.filter(d => d.date <= day.date).slice(-3).reverse();
-  $("#premium-3d").innerHTML = upto.map(d => {
-    const sec = matchSector(d);
-    const rows = sec ? sec.stocks.map(s => `<div class="premium-row" data-code="${esc(s.code)}" data-date="${d.date}"><span><b>${esc(s.name)}</b><small>${esc(s.tag)}</small></span><em class="premium-value">…</em></div>`).join("") : `<p class="stair-empty">当日无涨停</p>`;
-    return `<div class="premium-day"><header>${fmtDate(d.date)} ${d.weekday}<span class="premium-avg" data-date="${d.date}">…</span></header>${rows}</div>`;
-  }).join("");
-  upto.forEach(d => {
-    const sec = matchSector(d);
-    loadForward(d.date, 1).then(fwd => {
-      if (!state.selected || state.selected.sectorName !== sector.name) return;
-      const map = new Map(fwd.rows.map(r => [r.code, r.forward]));
-      const vals = [];
-      $$(`#premium-3d .premium-row[data-date="${d.date}"]`).forEach(row => {
-        const forward = map.get(row.dataset.code);
-        const v = forward && forward[0];
-        if (v != null) vals.push(v);
-        const cell = row.querySelector(".premium-value");
-        cell.textContent = v == null ? "--" : `${v > 0 ? "+" : ""}${v}%`;
-        cell.className = `premium-value ${v == null ? "" : v >= 0 ? "up" : "down"}`;
-        if (v == null) cell.title = "次日尚未收盘";
-        else if (fwd.intraday) cell.title = "盘中实时涨幅，收盘后落定";
-      });
-      const avgCell = $(`#premium-3d .premium-avg[data-date="${d.date}"]`);
-      if (avgCell) {
-        if (vals.length) {
-          const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-          avgCell.textContent = `均 ${avg > 0 ? "+" : ""}${avg.toFixed(2)}%`;
-          avgCell.className = `premium-avg ${avg >= 0 ? "up" : "down"}`;
-          if (fwd.intraday) avgCell.title = "盘中实时涨幅，收盘后落定";
-        } else {
-          avgCell.textContent = sec ? "--" : "";
-          if (sec) avgCell.title = "次日尚未收盘";
-        }
-      }
-    }).catch(() => {
-      const avgCell = $(`#premium-3d .premium-avg[data-date="${d.date}"]`);
-      if (avgCell) avgCell.textContent = sec ? "--" : "";
-    });
-  });
+  // 近一周每日梯队明细：梯队 / 流通市值 / 上板时间 / 封单 / 炸板
+  const allDays0 = state.dataset.days;
+  renderWeekLadder(allDays0, matchSector, day);
 
   // 近 5 日板块统计（口径与情绪页板块详情一致）
+  const allDays = state.dataset.days;
   const win = allDays.slice(-5);
   const rowsHtml = win.map(d => {
     const sec = matchSector(d);
